@@ -133,6 +133,7 @@ pub fn run() {
             commands::save_image,
             commands::list_images,
             commands::list_logs,
+            commands::log_ui_error,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

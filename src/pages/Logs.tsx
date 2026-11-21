@@ -7,6 +7,7 @@ import { Group, Page, Segmented, Tile, spring } from "../ui";
 const KIND: Record<string, [string, IconName]> = {
   alert: ["有卡提醒", "bell_fill"], auto: ["自动动作", "power"], skip: ["跳过", "pause"], manual: ["手动操作", "sparkle"],
   balance: ["余额", "wallet"], long_running: ["运行时长", "timer"], poll: ["查询", "refresh"],
+  ui: ["界面出错", "warn"],
 };
 type Filter = "all" | "alert" | "auto" | "manual" | "error";
 
