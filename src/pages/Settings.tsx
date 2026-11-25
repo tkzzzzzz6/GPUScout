@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { LINKS, call, inTauri, openExternal, type Balance, type Settings } from "../api";
 import { Btn, ConfirmButton, FormRow, Group, Page, Row, Stepper, Switch, copy, useAction, useRefData, useToast } from "../ui";
+import { UpdateSettings } from "../UpdateSettings";
 
 const CMD = "copy(localStorage.token)";
 
@@ -53,6 +54,7 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
   return (
     <Page>
       <h1 className="title">设置</h1>
+      <UpdateSettings />
       <p className="lede">只需要网页登录凭证：查库存、查余额都用它，数字和控制台一致。开发者 Token 是可选的，只有用「容器实例 Pro」时才需要。</p>
       <div style={{ maxWidth: 640 }}>
         <div className="group-label">网页登录凭证（必填）</div>
