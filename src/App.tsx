@@ -12,6 +12,7 @@ import LogsPage from "./pages/Logs";
 import AnalysisPage from "./pages/Analysis";
 import SettingsPage from "./pages/Settings";
 import ServersPage from "./pages/Servers";
+import { PageBoundary } from "./PageBoundary";
 
 export type PageId = "stock" | "rules" | "analysis" | "instances" | "servers" | "templates" | "logs" | "settings";
 
@@ -95,14 +96,16 @@ export default function App() {
         </header>
         <main className="content">
           <AnimatePresence mode="wait">
-            {page === "stock" && <StockPage key="stock" snap={snap} go={setPage} />}
-            {page === "rules" && <RulesPage key="rules" snap={snap} />}
-            {page === "servers" && <ServersPage key="servers" />}
-            {page === "instances" && <InstancesPage key="instances" hasToken={!!snap?.has_token} hasWebToken={!!snap?.has_web_token} go={setPage} />}
-            {page === "templates" && <TemplatesPage key="templates" hasToken={!!snap?.has_token} />}
-            {page === "analysis" && <AnalysisPage key="analysis" />}
-            {page === "logs" && <LogsPage key="logs" />}
-            {page === "settings" && <SettingsPage key="settings" hasToken={!!snap?.has_token} hasWebToken={!!snap?.has_web_token} webTokenExp={snap?.web_token_exp ?? null} />}
+            <PageBoundary key={page} page={page}>
+              {page === "stock" && <StockPage snap={snap} go={setPage} />}
+              {page === "rules" && <RulesPage snap={snap} />}
+              {page === "servers" && <ServersPage />}
+              {page === "instances" && <InstancesPage hasToken={!!snap?.has_token} hasWebToken={!!snap?.has_web_token} go={setPage} />}
+              {page === "templates" && <TemplatesPage hasToken={!!snap?.has_token} />}
+              {page === "analysis" && <AnalysisPage />}
+              {page === "logs" && <LogsPage />}
+              {page === "settings" && <SettingsPage hasToken={!!snap?.has_token} hasWebToken={!!snap?.has_web_token} webTokenExp={snap?.web_token_exp ?? null} />}
+            </PageBoundary>
           </AnimatePresence>
         </main>
       </div>

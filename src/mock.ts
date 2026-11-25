@@ -140,6 +140,12 @@ const instances = {
   ],
 };
 
+// 演示模式下 PageBoundary 记下的页面错误，日志页能看到
+const PAGE_NAMES: Record<string, string> = {
+  stock: "库存", rules: "提醒规则", analysis: "抢卡时段", instances: "我的实例", servers: "服务器", templates: "创建模板", logs: "日志", settings: "设置",
+};
+const uiLogs: { id: number; ts: number; level: string; kind: string; rule_id: null; message: string }[] = [];
+
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   await new Promise((r) => setTimeout(r, 120));
   const a = (args ?? {}) as any;
@@ -287,7 +293,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         summary: "每天 02:00–05:00 最容易有卡（有卡比例约 86%），周末比工作日更容易抢到。" };
     },
     history_gpus: () => ["RTX 4090", "RTX 4090D", "RTX 3090", "vGPU-48GB"],
+    log_ui_error: () => {
+      uiLogs.unshift({ id: 100 + uiLogs.length, ts: now(), level: "error", kind: "ui", rule_id: null, message: `「${PAGE_NAMES[a.page] ?? "未知页面"}」页渲染出错：${a.message}` });
+      return null;
+    },
     list_logs: () => [
+      ...uiLogs,
       { id: 3, ts: now() - 30, level: "info", kind: "alert", rule_id: 1, message: "有卡了：西北B区 4090 — 西北B区 · RTX 4090 空闲 7，RTX 4090D 空闲 3" },
       { id: 2, ts: now() - 4000, level: "warn", kind: "long_running", rule_id: null, message: "llm-sft 已连续运行 8.1 小时，记得关机" },
       { id: 1, ts: now() - 9000, level: "info", kind: "manual", rule_id: null, message: "开机 pro-76419909953e" },

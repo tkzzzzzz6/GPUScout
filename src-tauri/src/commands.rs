@@ -414,6 +414,53 @@ pub fn list_logs(st: State<'_, AppState>, limit: i64) -> R<Vec<LogEntry>> {
     st.store.logs(limit)
 }
 
+/// 前端某一页渲染出错（PageBoundary 接住的）时记一条日志，方便事后看是哪一页、什么错
+#[tauri::command]
+pub fn log_ui_error(st: State<'_, AppState>, page: String, message: String) -> R<()> {
+    st.store.log(now(), "error", "ui", None, &ui_error_line(&page, &message))
+}
+
+/// 页面名只认已知的几个；错误信息压成一行、截短，再把像凭证的长串遮掉。
+/// 前端的错误信息一般不会带凭证，但它来自 WebView，不能信，写库前统一兜一层。
+fn ui_error_line(page: &str, message: &str) -> String {
+    const PAGES: [(&str, &str); 8] = [
+        ("stock", "库存"), ("rules", "提醒规则"), ("analysis", "抢卡时段"), ("instances", "我的实例"),
+        ("servers", "服务器"), ("templates", "创建模板"), ("logs", "日志"), ("settings", "设置"),
+    ];
+    let name = PAGES.iter().find(|(id, _)| *id == page).map_or("未知页面", |(_, n)| n);
+    let one_line = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut msg: String = redact_long_tokens(&one_line).chars().take(300).collect();
+    if msg.is_empty() {
+        msg = "没有错误信息".into();
+    }
+    format!("「{name}」页渲染出错：{msg}")
+}
+
+/// 32 个字符以上、只由字母数字和 `_-+=` 组成的连续串（JWT 的每一段、开发者 Token）替换成「[已隐藏]」
+fn redact_long_tokens(s: &str) -> String {
+    let is_tok = |c: char| c.is_ascii_alphanumeric() || "_-+=".contains(c);
+    let mut out = String::with_capacity(s.len());
+    let mut run = String::new();
+    let flush = |run: &mut String, out: &mut String| {
+        if run.chars().count() >= 32 {
+            out.push_str("[已隐藏]");
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    };
+    for c in s.chars() {
+        if is_tok(c) {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut run, &mut out);
+    out
+}
+
 // ---------- 服务器（AutoDL 实例 + 自己的 SSH 服务器） ----------
 
 use crate::servers::{self, ServerView};
@@ -865,5 +912,22 @@ mod tests {
         assert_eq!(vscode_uri("lab", "tk").unwrap(), "vscode://vscode-remote/ssh-remote+lab/home/tk?windowId=_blank");
         assert!(vscode_uri("a b", "root").is_err());
         assert!(vscode_uri("lab", "x/../y").is_err());
+    }
+
+    #[test]
+    fn ui_error_line_names_page_and_hides_tokens() {
+        assert_eq!(
+            ui_error_line("stock", "TypeError: Cannot read properties of null (reading 'toFixed')\n    at StockPage"),
+            "「库存」页渲染出错：TypeError: Cannot read properties of null (reading 'toFixed') at StockPage"
+        );
+        // 假的 JWT：三段都够长，全部遮掉，点号保留
+        let fake = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmYWtlIjoiZmFrZS1mYWtlLWZha2UtZmFrZSJ9.ZmFrZS1zaWduYXR1cmUtZmFrZS1zaWduYXR1cmU";
+        let line = ui_error_line("settings", &format!("bad token {fake} here"));
+        assert_eq!(line, "「设置」页渲染出错：bad token [已隐藏].[已隐藏].[已隐藏] here");
+        // 正常的长单词不受影响
+        assert!(ui_error_line("rules", "RequestParameterIsWrong").ends_with("RequestParameterIsWrong"));
+        assert!(ui_error_line("<script>", "x").starts_with("「未知页面」"));
+        assert!(ui_error_line("logs", "  ").ends_with("没有错误信息"));
+        assert_eq!(ui_error_line("logs", &"错".repeat(500)).chars().count(), "「日志」页渲染出错：".chars().count() + 300);
     }
 }
