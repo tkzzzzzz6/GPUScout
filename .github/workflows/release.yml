@@ -10,12 +10,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "要打包的 tag（如 v0.1.0），必须已经推送到 GitHub"
+        description: "目标版本 tag（如 v0.1.0）；正式发布必须已推送，dry-run 可配合 build_ref 检查未打 tag 的代码"
         required: true
       dry_run:
         description: "只打包、核对，不发布（试新的发版流程用，安装包在这次运行的 Artifacts 里）"
         type: boolean
         default: false
+      build_ref:
+        description: "仅 dry-run：已审阅的分支或提交 SHA；留空时使用 tag"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -26,15 +31,19 @@ concurrency:
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
+  BUILD_REF: ${{ inputs.dry_run && inputs.build_ref || inputs.tag || github.ref_name }}
 
 jobs:
   prepare:
     name: 检查版本号
     runs-on: ubuntu-latest
     steps:
+      - name: 正式发布只允许 tag
+        if: ${{ inputs.build_ref && !inputs.dry_run }}
+        run: echo "::error::build_ref 仅允许用于 dry-run" && exit 1
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.BUILD_REF }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -99,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.BUILD_REF }}
       - name: Linux 打包需要的系统库
         if: runner.os == 'Linux'
         run: |
@@ -168,7 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.BUILD_REF }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -203,7 +212,7 @@ jobs:
           系统首次运行可能仍提示未签名；Linux 需要系统托盘和钥匙串支持。
 
           MD
-          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" --jq .body >> notes.md
+          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$(git rev-parse HEAD)" --jq .body >> notes.md
       - name: 校验所有更新签名并生成清单
         run: node scripts/updater-artifacts.mjs manifest out "$TAG" "$GITHUB_REPOSITORY" notes.md
       - name: 留存已核验的发布文件（包括 dry-run）
