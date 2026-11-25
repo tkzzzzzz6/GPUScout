@@ -97,9 +97,9 @@ export function Segmented<T extends string>({ items, value, onChange, layoutId, 
   );
 }
 
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Switch({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <motion.button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch"
+    <motion.button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" disabled={disabled}
       onClick={(e) => { e.stopPropagation(); onChange(!checked); }} whileTap={{ scale: .94 }}>
       <motion.span className="knob" animate={{ x: checked ? 20 : 0 }} transition={spring} />
     </motion.button>
