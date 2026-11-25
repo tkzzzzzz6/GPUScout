@@ -143,6 +143,11 @@ design/         设计稿 SVG（B2 风格）和应用图标源文件
 - 释放实例等不可逆操作在界面上用 `ConfirmButton`（点两次）。
 - SSH：服务器密码只存钥匙串（`secret::save_server_password`）；拼进终端命令的主机名、用户名、别名必须先过 `sshconfig::valid_*`；主机密钥变了不能自动接受，要用户在界面上确认；改 `~/.ssh/config` 只能动软件管理的那一段（`sshconfig::replace_block`），写前备份。
 
+## 更新签名
+
+- 发布更新包必须使用维护者备份的签名私钥，通过 Actions Secrets 注入；公钥通过仓库 Variable `TAURI_UPDATER_PUBLIC_KEY` 写入发布配置。不要在 issue、聊天、日志或测试快照输出私钥/密码，也不要把测试密钥当正式密钥。
+- `scripts/updater-artifacts.mjs` 先检查平台产物、签名和绑定版本，再生成清单；不能绕过校验发布。dry-run 不发布，Agent 不打 tag 或发布 Release。
+
 ## 界面约定
 
 - **只做浅色**，不要加深色模式。

@@ -163,6 +163,8 @@ pub struct Monitor {
     snapshot: RwLock<Snapshot>,
     wake: Notify,
     paused: AtomicBool,
+    /// 安装更新前等待整轮监控完成，避免在额度预留与实际动作之间退出。
+    tick_guard: tokio::sync::Mutex<()>,
     last_instances_check: RwLock<i64>,
     last_prune: RwLock<i64>,
     /// 点开卡型时的价格缓存，监控按机器查到的结果也写进来
@@ -202,6 +204,7 @@ impl Monitor {
             snapshot: RwLock::new(Snapshot::default()),
             wake: Notify::new(),
             paused: AtomicBool::new(false),
+            tick_guard: tokio::sync::Mutex::new(()),
             last_instances_check: RwLock::new(0),
             last_prune: RwLock::new(0),
             prices: Default::default(),
@@ -254,6 +257,10 @@ impl Monitor {
         s
     }
 
+    pub async fn wait_idle_for_update(&self) {
+        let _round = self.tick_guard.lock().await;
+    }
+
     fn update<F: FnOnce(&mut Snapshot)>(&self, app: &AppHandle, f: F) {
         {
             let mut s = self.snapshot.write().unwrap();
@@ -293,6 +300,7 @@ impl Monitor {
         tauri::async_runtime::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
+                if crate::updates::installing(&app) { continue; }
                 me.server_watch_round(&app).await;
             }
         });
@@ -513,6 +521,8 @@ impl Monitor {
 
     /// 返回本轮是否成功（用于退避）
     pub async fn tick(&self, app: &AppHandle) -> bool {
+        let _round = self.tick_guard.lock().await;
+        if self.paused.load(Ordering::SeqCst) { return true; }
         let client = self.client();
         let market = self.market();
         if client.is_none() && market.is_none() {
@@ -927,6 +937,18 @@ mod tests {
         assert_eq!(next_backoff(60, 60, false), 120);
         assert_eq!(next_backoff(480, 60, false), 600);
         assert_eq!(next_backoff(600, 60, true), 60);
+    }
+
+    #[tokio::test]
+    async fn updater_waits_for_the_current_monitor_round() {
+        let store = Arc::new(Store::open(std::path::Path::new(":memory:")).unwrap());
+        let monitor = Monitor::new(store, None, None);
+        let active = monitor.tick_guard.lock().await;
+        let idle = monitor.wait_idle_for_update();
+        tokio::pin!(idle);
+        assert!(tokio::time::timeout(Duration::from_millis(10), &mut idle).await.is_err());
+        drop(active);
+        tokio::time::timeout(Duration::from_secs(1), idle).await.unwrap();
     }
 
     #[test]

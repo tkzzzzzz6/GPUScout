@@ -14,6 +14,7 @@ pub mod terminal;
 mod secret;
 pub mod store;
 mod tray;
+mod updates;
 
 use std::sync::Arc;
 use tauri::{Manager, WindowEvent};
@@ -38,6 +39,8 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
@@ -52,6 +55,7 @@ pub fn run() {
             let web_token = secret::load(&store, secret::Kind::Web);
             let monitor = monitor::Monitor::new(store.clone(), token, web_token);
             app.manage(AppState { store, monitor: monitor.clone() });
+            app.manage(updates::InstallGate::default());
 
             tray::build(app.handle())?;
             monitor.spawn(app.handle().clone());
@@ -75,6 +79,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updates::updater_info,
+            updates::set_update_auto_check,
+            updates::prepare_update_install,
+            updates::cancel_update_install,
             commands::set_token,
             commands::clear_token,
             commands::set_web_token,

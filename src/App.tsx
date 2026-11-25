@@ -13,6 +13,7 @@ import AnalysisPage from "./pages/Analysis";
 import SettingsPage from "./pages/Settings";
 import ServersPage from "./pages/Servers";
 import { PageBoundary } from "./PageBoundary";
+import { UpdateBadge } from "./UpdateSettings";
 
 export type PageId = "stock" | "rules" | "analysis" | "instances" | "servers" | "templates" | "logs" | "settings";
 
@@ -71,6 +72,7 @@ export default function App() {
           <div className="brand"><img src={appIcon} alt="" />显卡管家{!inTauri && <span className="capsule warn" title="在浏览器里打开时显示的是假数据，真实数据请用 npm run tauri dev 打开的软件窗口查看" style={{ fontFamily: "var(--sans)", marginLeft: 4 }}>预览数据</span>}</div>
           <Segmented items={tabs} value={page} onChange={setPage} layoutId="nav-pill" />
           <div className="toolbar-right">
+            <UpdateBadge />
             <motion.button className="status-pill" title={snap?.last_error ?? "点击立即刷新"} whileTap={{ scale: .95 }}
               disabled={!snap?.has_web_token && !snap?.has_token} onClick={() => call("refresh_now")}>
               <span className={`dot ${dot}`}>

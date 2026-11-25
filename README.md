@@ -64,7 +64,7 @@ npm run tauri build    # 打包安装包（Windows 是 .msi / .exe，macOS 是 .
 | 服务器 | AutoDL 实例自动出现，实验室 / 云服务器手动添加或从 `~/.ssh/config` 导入；一键打开系统终端、用 VS Code Remote-SSH 打开；同步到 SSH 配置（AutoDL 端口变了自动更新）；生成密钥并推送公钥免密登录；主机密钥变化时拦下；点开看 GPU（利用率、显存、温度、功耗）、占卡进程和用户、CPU / 内存 / 磁盘，每 2 秒实时刷新并画出最近 5 分钟的曲线；列表上直接显示每台的 GPU 利用率和显存（10 秒一次）；两项都能在设置或页面上关掉；可开显卡空闲提醒（AutoDL，提醒不自动关机）、训练结束提醒（盯 PID 或日志）、磁盘告警 |
 | 创建模板 | 卡型、卡数、镜像、CUDA、系统盘、开机命令，一键创建 |
 | 日志 | 提醒、自动动作、手动操作记录；某一页出错时只那一页显示原因和「重新加载这一页」，错误也记在这里 |
-| 设置 | Token、看板区域（默认 V100专区、A800专区、佛山区、北京B区）、关注卡型、轮询间隔、余额提醒线、自动动作余额下限、运行时长提醒、开机自启 |
+| 设置 | Token、看板区域（默认 V100专区、A800专区、佛山区、北京B区）、关注卡型、轮询间隔、余额提醒线、自动动作余额下限、运行时长提醒、开机自启、当前版本与自动检查更新 |
 
 ### 界面一览
 
@@ -141,6 +141,34 @@ src/
 
 数据库位置：Windows 在 `%APPDATA%\io.github.tkzzzzzz6.autodl-lookout\autodl-lookout.sqlite3`，macOS 在 `~/Library/Application Support/io.github.tkzzzzzz6.autodl-lookout/`。
 早期开发版的数据在 `dev.local.autodl-lookout`（更早叫 autodl-manager 时在 `dev.local.autodl-manager`），首次启动会自动把旧数据库和凭证搬过来（旧文件保留不动）。
+
+## 应用内更新
+
+在“设置 → 软件更新”中查看当前版本、手动检查，或开关自动检查（立即保存）。桌面版启动后延迟检查，此后每 6 小时检查一次；离线时会退避重试，不阻塞库存监控。有新版本时顶栏显示入口，不会自动下载安装或强制更新。
+
+查看更新说明后，点“下载并安装”并再次确认才开始。下载没有总大小时显示已下载的数据量；签名和绑定版本通过验证后，软件暂停新一轮监控、等待当前轮次结束，再进入安装。安装失败恢复此前暂停状态；Windows NSIS 安装程序会退出并重启，macOS / AppImage 安装后可点击“重新启动”。请在可以暂时暂停监控时更新。
+
+MSI、deb/rpm 或未识别的安装方式只提供版本提示与发布页入口，使用同类型安装包或包管理器升级。更新不改变应用标识或删除规则、设置、数据库、SSH 配置和钥匙串凭据。首个接入更新功能的版本仍需手动安装一次。
+
+正式发布包的更新公钥由下面的签名配置注入。未配置的本地构建不发起应用内更新请求，可打开发布页下载。浏览器演示支持完整假更新流程，不会连接 GitHub、下载文件或修改系统。
+
+## 自动更新签名配置
+
+维护者先在自己的电脑生成更新签名密钥：`npm run tauri -- signer generate -w <安全目录>/autodl-lookout.key`，按提示设置密码并备份私钥与 `.pub` 公钥。私钥丢失后，现有客户端无法验证新密钥签发的更新。
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
+
+| 类型 | 名称 | 内容 |
+|---|---|---|
+| Secret | `TAURI_SIGNING_PRIVATE_KEY` | 私钥文件完整内容 |
+| Secret | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 私钥密码 |
+| Variable | `TAURI_UPDATER_PUBLIC_KEY` | `.pub` 公钥文件完整内容 |
+
+私钥和密码不要提交、贴进 issue 或发在聊天中；公钥可公开，会写入发布版配置。Tauri 的更新签名用于验证更新来源，不代替 Windows 代码签名和 Apple 公证。
+
+发版会先检查签名配置；全平台构建成功后，保留更新包和签名、区分 macOS 两种架构，验证签名绑定的版本，再生成 `latest.json` 并统一发布。缺配置、缺产物、错签名或重名都会失败。dry-run 同样验签，但只留存核验后的 artifacts，不发布。手动运行时可填 `build_ref` 为已审阅的分支或提交 SHA，`tag` 填与该代码版本一致的 `vX.Y.Z`；这样无需先推送会触发正式发布的 tag，就能验证新代码。正式发布禁止使用 `build_ref`，仍从已推送的 tag 构建。Linux 上 `npm test` 会在安装了 `minisign` 时执行真实 Tauri 签名回归测试；没有该工具的平台明确跳过这一项，其余清单检查照常运行。
+
+本地仅打普通安装包时，可用 `npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'` 关闭更新产物生成；正式发布必须通过配置签名的 workflow。首个支持自动更新的版本仍需用户手动安装一次。Windows NSIS、macOS、Linux AppImage 可接入应用内更新；deb/rpm 使用对应包或包管理器，MSI 用户需核实安装方式兼容性。
 
 ## 发版
 
