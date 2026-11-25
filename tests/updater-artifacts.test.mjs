@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { collectArtifacts, createManifest, updaterConfig, validatePublicKey, verifySignature } from "../scripts/updater-artifacts.mjs";
 
 const pub = Buffer.from(`untrusted comment: test public key\n${Buffer.concat([Buffer.from("Ed"), Buffer.alloc(40, 1)]).toString("base64")}\n`).toString("base64");
@@ -79,13 +80,13 @@ test("规范化后重名或输出含旧产物时拒绝收集", () => {
 
 test("真实 Tauri 签名可验证，篡改产物、公钥、版本和签名都被拒绝", { skip: spawnSync("minisign", ["-v"]).status !== 0 }, () => {
   const temp = mkdtempSync(join(tmpdir(), "lookout-signature-test-"));
-  const tauri = process.platform === "win32" ? "node_modules/.bin/tauri.cmd" : "node_modules/.bin/tauri";
+  const tauri = fileURLToPath(new URL("../node_modules/@tauri-apps/cli/tauri.js", import.meta.url));
   try {
     const key = join(temp, "test.key"), asset = join(temp, "test.exe");
     // 仅用于临时测试；测试私钥不输出、不提交，并在 finally 中删除。
-    execFileSync(tauri, ["signer", "generate", "-p", "test-only", "--ci", "-w", key], { stdio: "pipe" });
+    execFileSync(process.execPath, [tauri, "signer", "generate", "-p", "test-only", "--ci", "-w", key], { stdio: "pipe" });
     writeFileSync(asset, "original test artifact");
-    execFileSync(tauri, ["signer", "sign", "-f", key, "-p", "test-only", "--app-version", "0.2.0", asset], { stdio: "pipe" });
+    execFileSync(process.execPath, [tauri, "signer", "sign", "-f", key, "-p", "test-only", "--app-version", "0.2.0", asset], { stdio: "pipe" });
     const publicKey = readFileSync(`${key}.pub`, "utf8"), signature = readFileSync(`${asset}.sig`, "utf8");
     verifySignature(asset, signature, publicKey, "0.2.0");
     assert.throws(() => verifySignature(asset, signature, publicKey, "0.3.0"), /目标版本/);
