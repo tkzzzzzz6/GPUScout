@@ -74,16 +74,19 @@ button { cursor: pointer; }
 .shell { display: flex; flex-direction: column; height: 100vh; }
 .toolbar {
   position: relative; z-index: 5; height: 64px; flex: none;
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; padding: 0 24px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 0 24px;
   background: rgba(255, 255, 255, .55); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   border-bottom: 1px solid var(--sep);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 17px; font-weight: 600; }
 .brand img { width: 34px; height: 34px; filter: drop-shadow(0 2px 4px rgba(10, 60, 160, .25)); }
 .toolbar-right { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.toolbar > .segmented { justify-self: center; max-width: 100%; overflow-x: auto; }
+.toolbar > .segmented button { flex-shrink: 0; white-space: nowrap; }
 .status-pill {
   display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px;
   border-radius: 15px; background: var(--track); color: var(--ink-2); font-size: 12px; border: 0;
+  white-space: nowrap; flex-shrink: 0;
 }
 .status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); position: relative; }
 .status-pill .dot.warn { background: var(--orange); } .status-pill .dot.err { background: var(--red); } .status-pill .dot.idle { background: var(--faint); }
@@ -138,6 +141,9 @@ button { cursor: pointer; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 /* ---------- home ---------- */
+.update-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; font: inherit; color: var(--ink-2); }
+.switch:disabled { opacity: .5; cursor: wait; }
+
 .home-top { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 32px; align-items: start; margin-bottom: 44px; }
 .widget { border-radius: 28px; padding: 20px 22px; height: 260px; display: flex; flex-direction: column; }
 .widget-head { display: flex; align-items: center; gap: 6px; font-family: var(--display); font-size: 13px; color: var(--muted); font-weight: 600; }
