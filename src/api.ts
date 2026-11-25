@@ -41,6 +41,7 @@ export interface ServerView {
 export interface ServerList {
   servers: ServerView[]; autodl_error: string | null; own_key: string | null;
   ssh_config_path: string | null; auto_sync: boolean; synced: boolean;
+  ssh_sync_error: string | null; ssh_name_error: boolean;
 }
 /** 存在本机的自己的服务器（save_server 的参数） */
 export interface ServerRecord {

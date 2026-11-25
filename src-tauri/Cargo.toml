@@ -33,6 +33,7 @@ russh = { version = "0.54.5", default-features = false, features = ["ring", "rsa
 rand_core = { version = "0.6", features = ["getrandom"] }
 tauri-plugin-updater = "2.14.1"
 tauri-plugin-process = "2"
+glob = "0.3"
 
 # 只允许运行一个实例：两个进程同时轮询会重复提醒，自动动作也会重复执行
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]

@@ -82,6 +82,7 @@ mod tests {
 
     #[test]
     fn builds_ssh_args() {
+        assert_eq!(ssh_args(Some("训练机-A100"), "", 0, "", None).unwrap(), vec!["训练机-A100"]);
         assert_eq!(ssh_args(Some("autodl-qwen-a1b2c3"), "", 0, "", None).unwrap(), vec!["autodl-qwen-a1b2c3"]);
         assert_eq!(
             ssh_args(None, "region-9.autodl.pro", 32145, "root", Some("/home/tk/.ssh/id_x")).unwrap(),
