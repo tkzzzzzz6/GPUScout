@@ -173,7 +173,11 @@ jobs:
         with:
           node-version: 22
       - name: 安装更新签名校验工具
-        run: sudo apt-get update && sudo apt-get install -y minisign
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libsodium-dev
+          bash scripts/install-minisign.sh "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - uses: actions/download-artifact@v4
         with:
           pattern: bundle-*
