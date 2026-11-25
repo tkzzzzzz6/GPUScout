@@ -150,7 +150,7 @@ src/
 
 私钥和密码不要提交、贴进 issue 或发在聊天中；公钥可公开，会写入发布版配置。Tauri 的更新签名用于验证更新来源，不代替 Windows 代码签名和 Apple 公证。
 
-发版会先检查签名配置；全平台构建成功后，保留更新包和签名、区分 macOS 两种架构，验证签名绑定的版本，再生成 `latest.json` 并统一发布。缺配置、缺产物、错签名或重名都会失败。dry-run 同样验签，但只留存核验后的 artifacts，不发布。Linux 上 `npm test` 会在安装了 `minisign` 时执行真实 Tauri 签名回归测试；没有该工具的平台明确跳过这一项，其余清单检查照常运行。
+发版会先检查签名配置；全平台构建成功后，保留更新包和签名、区分 macOS 两种架构，验证签名绑定的版本，再生成 `latest.json` 并统一发布。缺配置、缺产物、错签名或重名都会失败。dry-run 同样验签，但只留存核验后的 artifacts，不发布。手动运行时可填 `build_ref` 为已审阅的分支或提交 SHA，`tag` 填与该代码版本一致的 `vX.Y.Z`；这样无需先推送会触发正式发布的 tag，就能验证新代码。正式发布禁止使用 `build_ref`，仍从已推送的 tag 构建。Linux 上 `npm test` 会在安装了 `minisign` 时执行真实 Tauri 签名回归测试；没有该工具的平台明确跳过这一项，其余清单检查照常运行。
 
 本地仅打普通安装包时，可用 `npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'` 关闭更新产物生成；正式发布必须通过配置签名的 workflow。首个支持自动更新的版本仍需用户手动安装一次。Windows NSIS、macOS、Linux AppImage 可接入应用内更新；deb/rpm 使用对应包或包管理器，MSI 用户需核实安装方式兼容性。
 
