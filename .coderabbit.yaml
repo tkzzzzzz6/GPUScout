@@ -1,0 +1,4 @@
+reviews:
+  auto_review:
+    enabled: false
+  review_status: false # 关闭状态评论
