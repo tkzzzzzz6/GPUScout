@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { LINKS, call, inTauri, openExternal, type Balance, type Settings } from "../api";
+import { LINKS, call, openExternal, type Balance, type Settings } from "../api";
+import { AutostartSettings } from "../AutostartSettings";
 import { Btn, ConfirmButton, FormRow, Group, Page, Row, Stepper, Switch, copy, useAction, useRefData, useToast } from "../ui";
 
 const CMD = "copy(localStorage.token)";
@@ -12,13 +12,11 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
   const [saved, setSaved] = useState<string>("");
   const [token, setToken] = useState("");
   const [webToken, setWebToken] = useState("");
-  const [autostart, setAutostart] = useState(false);
   const { busy, run } = useAction();
   const toast = useToast();
 
   useEffect(() => {
     call<Settings>("get_settings").then((x) => { setS(x); setSaved(JSON.stringify(x)); });
-    if (inTauri) isEnabled().then(setAutostart).catch(() => {});
   }, []);
   const dirty = s != null && JSON.stringify(s) !== saved;
 
@@ -39,11 +37,6 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
   const daysLeft = webTokenExp ? Math.floor((webTokenExp * 1000 - Date.now()) / 86400000) : null;
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((x) => (x ? { ...x, [k]: v } : x));
   const toggleRegion = (v: string) => s && set("regions", s.regions.includes(v) ? s.regions.filter((x) => x !== v) : [...s.regions, v]);
-  const toggleAuto = async (on: boolean) => {
-    setAutostart(on);
-    await run(() => (on ? enable() : disable()));
-    setAutostart(await isEnabled());
-  };
   const saveSettings = async () => {
     if (!s) return;
     const r = await run(() => call("save_settings", { settings: s }), "设置已保存");
@@ -140,14 +133,7 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
             </Group>
             <div className="group-foot">实时刷新：打开服务器详情时每 2 秒更新一次并画出最近 5 分钟的曲线，关掉面板或最小化窗口就停；关掉这项回到 30 秒刷新。列表状态：「服务器」页开着时每 10 秒采集一次每台的 GPU 利用率和显存；关掉就不连服务器。</div>
 
-            {inTauri && (
-              <>
-                <div className="group-label">系统</div>
-                <Group>
-                  <FormRow icon="sparkle" label="开机时自动启动并隐藏到托盘"><Switch checked={autostart} label="开机自启" onChange={toggleAuto} /></FormRow>
-                </Group>
-              </>
-            )}
+            <AutostartSettings />
 
             <motion.div initial={false} animate={{ opacity: dirty ? 1 : .5, y: dirty ? 0 : 4 }} transition={{ duration: .2 }}
               className="row" style={{ marginTop: 22 }}>

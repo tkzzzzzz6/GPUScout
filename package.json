@@ -15,9 +15,10 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "demo": "vite",
-    "test": "npm run build && cargo test --manifest-path src-tauri/Cargo.toml",
+    "test": "npm run test:autostart && npm run build && cargo test --manifest-path src-tauri/Cargo.toml",
     "version:check": "node scripts/version.mjs check",
-    "version:set": "node scripts/version.mjs set"
+    "version:set": "node scripts/version.mjs set",
+    "test:autostart": "node --test tests/autostart.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
