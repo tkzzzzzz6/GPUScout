@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Ubuntu 22.04 没有 minisign 包；从固定的官方 Git 提交构建，避免依赖浮动下载的可执行文件。
-revision=03ebc0dafb08a77e0548e9cbc4668a3588128de5
+revision=b85e15d45ac9eab34e44596fd309f5b07db9545c
 build_dir=$(mktemp -d)
 trap 'rm -rf "$build_dir"' EXIT
 git -C "$build_dir" init --quiet
