@@ -45,6 +45,16 @@ feat: 规则支持「单机至少 N 卡」
 
 Release 说明按 PR 的 label 自动分类（见 [`.github/release.yml`](./.github/release.yml)）：新功能 `enhancement`、缺陷 `bug`、文档 `documentation`、破坏性变更 `breaking-change`。
 
+## 依赖更新
+
+Dependabot 每周一检查 npm、Cargo 和 GitHub Actions，每个生态最多保留 5 个版本更新 PR；同生态的 minor / patch 更新分组，major 更新单独审阅。配置合入默认分支后才会按计划运行，没有可更新版本时不一定产生 PR。
+
+依赖 PR 需关联 #55 或对应的维护 issue，检查依赖声明与 lockfile 一起更新，运行现有 Windows / Ubuntu CI 的版本检查和 `npm test`。不要为依赖升级修改软件版本号，不跳过 CI、不自动合并，也不触发发版。已有的 russh 升级 PR #54 单独验证兼容性，不混进配置变更。
+
+维护者还需在仓库 Settings → Code security 独立确认 Dependabot alerts 和 security updates 已开启；定期版本更新配置不代替这两个开关。安全更新可能不遵循版本更新的每周计划与 PR 数量限制。
+
+Dependabot 触发的 CI 不应依赖 AutoDL 凭证或仓库 secrets。保持 `pull_request` 测试，不改用执行 PR 代码的 `pull_request_target` 来获取额外权限。
+
 ## 代码风格
 
 - 中文注释和界面文案，注释说明「为什么」而不是复述代码。

@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, enhancement]
+    commit-message:
+      prefix: chore
+    groups:
+      npm-compatible:
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, rust, enhancement]
+    commit-message:
+      prefix: chore
+    groups:
+      cargo-compatible:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, enhancement]
+    commit-message:
+      prefix: chore
+    groups:
+      actions-compatible:
+        update-types: [minor, patch]
