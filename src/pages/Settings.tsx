@@ -119,6 +119,7 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
               <FormRow icon="calendar" label="库存历史保留"><Stepper value={s.history_keep_days} min={1} max={90} unit="天" onChange={(v) => set("history_keep_days", v)} /></FormRow>
             </Group>
             <div className="group-foot">查询出错时会自动放慢，最长 10 分钟一次。</div>
+            <div className="group-foot">历史保留越久，数据库越大。默认 4 区、每 60 秒查询、约 14 个区域卡型组合全天运行时，历史与索引约增加 1.5 MiB/天，30 天约 46 MiB；实际随卡型数、查询间隔和开机时间变化。新安装默认保留 30 天，已有设置保持原值。</div>
 
             <div className="group-label">提醒</div>
             <Group>

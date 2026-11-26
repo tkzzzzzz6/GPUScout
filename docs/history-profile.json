@@ -1,0 +1,92 @@
+[
+  {
+    "region": "beijingDC3",
+    "items": [
+      {
+        "gpu_name": "Tesla V100-SXM2-32GB",
+        "idle": 18,
+        "total": 320
+      },
+      {
+        "gpu_name": "V100-SXM2-16GB",
+        "idle": 0,
+        "total": 64
+      }
+    ]
+  },
+  {
+    "region": "neimengDC2",
+    "items": [
+      {
+        "gpu_name": "A800-SXM4-80GB",
+        "idle": 0,
+        "total": 512
+      },
+      {
+        "gpu_name": "A100-SXM4-80GB",
+        "idle": 2,
+        "total": 96
+      }
+    ]
+  },
+  {
+    "region": "foshanDC1",
+    "items": [
+      {
+        "gpu_name": "RTX 4090",
+        "idle": 13,
+        "total": 600
+      },
+      {
+        "gpu_name": "A100-PCIE-40GB",
+        "idle": 3,
+        "total": 48
+      },
+      {
+        "gpu_name": "A800-SXM4-80GB",
+        "idle": 5,
+        "total": 80
+      },
+      {
+        "gpu_name": "RTX 3090",
+        "idle": 30,
+        "total": 410
+      }
+    ]
+  },
+  {
+    "region": "beijingDC2",
+    "items": [
+      {
+        "gpu_name": "RTX 3080 Ti",
+        "idle": 21,
+        "total": 392
+      },
+      {
+        "gpu_name": "A100-SXM4-80GB",
+        "idle": 4,
+        "total": 160
+      },
+      {
+        "gpu_name": "RTX A4000",
+        "idle": 6,
+        "total": 24
+      },
+      {
+        "gpu_name": "RTX 5090",
+        "idle": 0,
+        "total": 980
+      },
+      {
+        "gpu_name": "RTX 4090",
+        "idle": 0,
+        "total": 940
+      },
+      {
+        "gpu_name": "RTX 4090D",
+        "idle": 0,
+        "total": 512
+      }
+    ]
+  }
+]

@@ -7,6 +7,7 @@
 
 use chrono::{Datelike, TimeZone, Timelike};
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct HeatCell {
@@ -26,6 +27,10 @@ pub struct Heatmap {
     pub samples: i64,
     pub first_ts: Option<i64>,
     pub last_ts: Option<i64>,
+    /// 最早到最晚采样在本地日历上覆盖的天数，包含首尾日期；空数据为 0。
+    pub coverage_days: i64,
+    /// 实际有采样的不同日期数，软件关闭的日期不计入。
+    pub sample_days: usize,
     /// 一句话结论；数据不够时为 None
     pub summary: Option<String>,
 }
@@ -33,8 +38,13 @@ pub struct Heatmap {
 /// points：(时间戳, 该时刻空闲卡数)
 pub fn build<Tz: TimeZone>(points: &[(i64, i64)], tz: &Tz) -> Heatmap {
     let mut acc = vec![(0i64, 0i64, 0i64); 7 * 24]; // (采样数, 有卡次数, 空闲总和)
+    let mut dates = BTreeSet::new();
+    let (mut first_ts, mut last_ts): (Option<i64>, Option<i64>) = (None, None);
     for &(ts, idle) in points {
         let Some(t) = tz.timestamp_opt(ts, 0).single() else { continue };
+        dates.insert(t.date_naive());
+        first_ts = Some(first_ts.map_or(ts, |first| first.min(ts)));
+        last_ts = Some(last_ts.map_or(ts, |last| last.max(ts)));
         let i = t.weekday().num_days_from_monday() as usize * 24 + t.hour() as usize;
         acc[i].0 += 1;
         acc[i].1 += (idle > 0) as i64;
@@ -51,15 +61,14 @@ pub fn build<Tz: TimeZone>(points: &[(i64, i64)], tz: &Tz) -> Heatmap {
             avg_idle: (n > 0).then(|| sum as f64 / n as f64),
         })
         .collect::<Vec<_>>();
-    let samples = points.len() as i64;
-    let first_ts = points.iter().map(|p| p.0).min();
-    let last_ts = points.iter().map(|p| p.0).max();
+    let samples = acc.iter().map(|(n, _, _)| n).sum();
+    let coverage_days = dates.first().zip(dates.last()).map_or(0, |(first, last)| (*last - *first).num_days() + 1);
     let span_ok = match (first_ts, last_ts) {
         (Some(a), Some(b)) => b - a >= 86400,
         _ => false,
     };
     let summary = if span_ok { summarize(&cells) } else { None };
-    Heatmap { cells, samples, first_ts, last_ts, summary }
+    Heatmap { cells, samples, first_ts, last_ts, coverage_days, sample_days: dates.len(), summary }
 }
 
 /// 找出全天里有卡比例最高的连续 3 小时（跨午夜也算），再看工作日和周末差别大不大。
@@ -144,6 +153,22 @@ mod tests {
 
     /// 2026-11-02 是周一，这里取北京时间 00:00
     const MON0: i64 = 1_793_548_800;
+
+    #[test]
+    fn coverage_counts_local_dates_and_distinguishes_gaps_from_sampling_days() {
+        let empty = build(&[], &cst());
+        assert_eq!((empty.coverage_days, empty.sample_days, empty.samples), (0, 0, 0));
+        let single = build(&[(MON0, 1), (MON0 + 60, 0)], &cst());
+        assert_eq!((single.coverage_days, single.sample_days), (1, 1));
+        let points = [(MON0 + 23 * 3600 + 59 * 60, 1), (MON0 + 86400, 1), (MON0 + 6 * 86400, 0)];
+        let map = build(&points, &cst());
+        assert_eq!((map.coverage_days, map.sample_days), (7, 3));
+        let utc = build(&points[..2], &chrono::Utc);
+        assert_eq!((utc.coverage_days, utc.sample_days), (1, 1), "本地午夜按所选时区计数");
+        let invalid = build(&[(i64::MAX, 1)], &cst());
+        assert_eq!((invalid.coverage_days, invalid.sample_days, invalid.samples), (0, 0, 0));
+        assert!(invalid.first_ts.is_none());
+    }
 
     #[test]
     fn monday_midnight_constant_is_right() {

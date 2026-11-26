@@ -23,6 +23,7 @@ export default function AnalysisPage() {
   const [range, setRange] = useState<Range>("14");
   const [data, setData] = useState<Heatmap | null>(null);
   const [hover, setHover] = useState<HeatCell | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     call<Settings>("get_settings").then(setSettings);
@@ -57,7 +58,12 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     if (!region || !keyword) { setData(null); return; }
-    call<Heatmap>("stock_heatmap", { region, keyword, days: Number(range) }).then(setData);
+    let active = true;
+    setData(null); setError(null); setHover(null);
+    call<Heatmap>("stock_heatmap", { region, keyword, days: Number(range) })
+      .then((value) => { if (active) setData(value); })
+      .catch((reason) => { if (active) setError(String(reason)); });
+    return () => { active = false; };
   }, [region, keyword, range]);
 
   const max = useMemo(() => {
@@ -82,6 +88,11 @@ export default function AnalysisPage() {
             ? `目前只有 ${spanDays < 1 / 24 ? "不到 1 小时" : `${Math.max(1, Math.round(spanDays * 24))} 小时`}的数据，至少要一整天才看得出规律。`
             : data.summary}
       </p>
+      {error && <p className="err-text" role="alert">读取库存历史失败：{error}</p>}
+      {data && data.samples > 0 && <p className="group-foot" role="status" style={{ marginBottom: 16 }}>
+        基于最近 {data.coverage_days} 天的数据（最早 {new Date(data.first_ts! * 1000).toLocaleDateString("sv-SE")}），其中 {data.sample_days} 天有采样。
+        {data.sample_days < 7 && <span className="err-text"> 实际采样不足一周，结论参考价值有限。</span>}
+      </p>}
 
       <div className="row" style={{ gap: 12, marginBottom: 18 }}>
         {regionOpts.length > 1
@@ -145,6 +156,7 @@ export default function AnalysisPage() {
       </Group>
       <p className="footnote">
         按本机时区统计；每次查询库存记一个采样（间隔约 {settings?.poll_interval_secs ?? 60} 秒），软件关着的时段没有数据。
+        覆盖天数按日历日期计数，包含首尾日期。
         {data?.first_ts ? `数据从 ${fmtTime(data.first_ts)} 开始，` : ""}
         历史保留天数可以在「设置」里调整。
       </p>

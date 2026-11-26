@@ -38,7 +38,7 @@ impl Default for Settings {
             low_balance_yuan: 20.0,
             long_running_hours: 8.0,
             auto_min_balance_yuan: 10.0,
-            history_keep_days: 14,
+            history_keep_days: 30,
             watch_models: vec!["A100".into(), "V100".into(), "A800".into()],
             server_live: true,
             server_overview: true,
@@ -252,7 +252,14 @@ impl Store {
         self.kv_get("settings")
             .ok()
             .flatten()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| {
+                let value: serde_json::Value = serde_json::from_str(&s).ok()?;
+                let has_history_days = value.get("history_keep_days").is_some();
+                let mut settings: Settings = serde_json::from_value(value).ok()?;
+                // 已有设置中尚无此字段的旧版本，也继续使用旧默认；只给新安装增加保留期。
+                if !has_history_days { settings.history_keep_days = 14; }
+                Some(settings)
+            })
             .unwrap_or_default()
     }
 
@@ -623,6 +630,29 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn longer_history_is_only_the_default_for_new_installations() {
+        let fresh = Store::open_in_memory().unwrap();
+        assert_eq!(fresh.settings().history_keep_days, 30);
+        for days in [14, 60, 90] {
+            fresh.save_settings(&Settings { history_keep_days: days, ..Default::default() }).unwrap();
+            assert_eq!(fresh.settings().history_keep_days, days);
+        }
+        fresh.kv_set("settings", r#"{"poll_interval_secs":120,"regions":["westDC3"]}"#).unwrap();
+        assert_eq!(fresh.settings().history_keep_days, 14, "缺少字段的已保存旧设置也保留旧默认");
+        assert_eq!(fresh.settings().poll_interval_secs, 120);
+        let dir = std::env::temp_dir().join(format!("lookout-history-settings-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("settings.db");
+        let saved = Store::open(&path).unwrap();
+        saved.save_settings(&Settings { history_keep_days: 14, ..Default::default() }).unwrap();
+        drop(saved);
+        let reopened = Store::open(&path).unwrap();
+        assert_eq!(reopened.settings().history_keep_days, 14, "重新打开旧数据库也不增加保留期");
+        drop(reopened);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn default_regions_and_watch_models() {

@@ -14,7 +14,7 @@ const regionsRef = [
 
 let settings: Settings = {
   poll_interval_secs: 60, regions: ["beijingDC3", "neimengDC2", "foshanDC1", "beijingDC2"], low_balance_yuan: 20,
-  long_running_hours: 8, auto_min_balance_yuan: 10, history_keep_days: 14, watch_models: ["A100", "V100", "A800"],
+  long_running_hours: 8, auto_min_balance_yuan: 10, history_keep_days: 30, watch_models: ["A100", "V100", "A800"],
   server_live: true, server_overview: true,
 };
 
@@ -315,17 +315,23 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       ts: now() - (96 - i) * 900,
       idle: Math.max(0, Math.round(6 + 6 * Math.sin(i / 9) + (i % 7) - 3)), total: 1240,
     })),
-    // 两周假历史：深夜和清晨容易有卡，周末更多一点
+    // 假历史：遵守范围和保留期；?demoHistoryDays=3 可查看采样不足一周的状态
     stock_heatmap: () => {
-      const days = Number(a.days) || 14;
+      const demoDays = Math.max(1, Math.min(90, Number(new URLSearchParams(window.location.search).get("demoHistoryDays")) || settings.history_keep_days));
+      const days = Math.min(Number(a.days) || demoDays, demoDays, settings.history_keep_days);
+      const first = new Date(); first.setHours(0, 0, 0, 0); first.setDate(first.getDate() - days + 1);
       const cells = Array.from({ length: 168 }, (_, i) => {
         const weekday = Math.floor(i / 24), hour = i % 24;
         const night = Math.max(0, Math.cos(((hour - 3) / 24) * Math.PI * 2));
         const hit = Math.min(1, night * 0.85 + (weekday >= 5 ? 0.18 : 0) + ((i * 37) % 11) / 80);
-        const samples = days >= 7 ? Math.round(days / 7) * 60 : 0;
-        return { weekday, hour, samples, hit_ratio: hit, avg_idle: hit * 9 };
+        let samples = 0;
+        for (let day = 0; day < days; day++) {
+          const date = new Date(first); date.setDate(date.getDate() + day); date.setHours(hour);
+          if ((date.getDay() + 6) % 7 === weekday && date.getTime() <= Date.now()) samples += 60;
+        }
+        return { weekday, hour, samples, hit_ratio: samples ? hit : null, avg_idle: samples ? hit * 9 : null };
       });
-      return { cells, samples: cells.reduce((s, c) => s + c.samples, 0), first_ts: now() - days * 86400, last_ts: now(),
+      return { cells, samples: cells.reduce((s, c) => s + c.samples, 0), first_ts: first.getTime() / 1000, last_ts: now(), coverage_days: days, sample_days: days,
         summary: "每天 02:00–05:00 最容易有卡（有卡比例约 86%），周末比工作日更容易抢到。" };
     },
     history_gpus: () => ["RTX 4090", "RTX 4090D", "RTX 3090", "vGPU-48GB"],
