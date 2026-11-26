@@ -46,7 +46,7 @@ jobs:
       - name: 正式发布只允许 tag
         if: ${{ inputs.build_ref && !inputs.dry_run }}
         run: echo "::error::build_ref 仅允许用于 dry-run" && exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.BUILD_REF }}
       - uses: actions/setup-node@v4
@@ -107,7 +107,7 @@ jobs:
             targets: ""
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.BUILD_REF }}
       - name: Linux 打包需要的系统库
@@ -184,7 +184,7 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.BUILD_REF }}
       - uses: actions/setup-node@v4
