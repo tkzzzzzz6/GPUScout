@@ -387,6 +387,7 @@ pub async fn regular_power_on(st: State<'_, AppState>, uuid: String, non_gpu: bo
     let _ = st.store.kv_set(&key, &(attempts + 1).to_string());
     match m.power_on(&uuid, non_gpu).await {
         Ok(()) => {
+            st.monitor.invalidate_instances().await;
             let _ = st.store.log(now(), "info", "manual", None, &format!("普通实例开机{mode} {uuid}（今天第 {} 次）", attempts + 1));
             Ok(())
         }
@@ -400,6 +401,7 @@ pub async fn regular_power_on(st: State<'_, AppState>, uuid: String, non_gpu: bo
 #[tauri::command]
 pub async fn regular_power_off(st: State<'_, AppState>, uuid: String) -> R<()> {
     market(&st)?.power_off(&uuid).await.map_err(s)?;
+    st.monitor.invalidate_instances().await;
     let _ = st.store.log(now(), "info", "manual", None, &format!("普通实例关机 {uuid}"));
     Ok(())
 }

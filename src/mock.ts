@@ -270,8 +270,14 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     list_instances: () => instances,
     list_regular_instances: () => { const error = queryFormatError("instances", "instance.list"); if (error) throw error; return regular; },
     regular_instance_password: () => "xxxxxx",
-    regular_power_on: () => { regular = regular.map((i) => (i.uuid === a.uuid ? { ...i, status: "running", started_at: now() } : i)); },
-    regular_power_off: () => { regular = regular.map((i) => (i.uuid === a.uuid ? { ...i, status: "shutdown", started_at: null, stopped_at: now() } : i)); },
+    regular_power_on: () => {
+      if (new URLSearchParams(window.location.search).has("demoServerPowerError")) throw "余额低于开机余额下限，未开机";
+      regular = regular.map((i) => (i.uuid === a.uuid ? { ...i, status: "running", started_at: now() } : i));
+    },
+    regular_power_off: () => {
+      if (new URLSearchParams(window.location.search).has("demoServerPowerError")) throw "关机请求失败，请稍后重试";
+      regular = regular.map((i) => (i.uuid === a.uuid ? { ...i, status: "shutdown", started_at: null, stopped_at: now() } : i));
+    },
     instance_snapshot: () => ({
       ssh_command: "ssh -p 32145 root@connect.westb.seetacloud.com", root_password: "xxxxxx",
       jupyter_domain: "https://example.invalid/jupyter", service_6006_domain: "https://example.invalid/6006",
@@ -302,7 +308,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           id: `autodl:${i.uuid}`, kind: "autodl", name: i.name || `${i.gpu} 实例`, host: i.ssh_command.split("@")[1] ?? "",
           port: Number(i.ssh_command.split(" ")[2]) || 22, user: "root", alias: i.name,
           alias_ready: sshSynced && !issue, auth: "password", key_path: null, has_password: true, key_pushed: i.uuid === regular[0].uuid,
-          status: i.status, gpu: `${i.gpu} × ${i.gpu_amount}`, region_name: i.region_name, note: null,
+          status: new URLSearchParams(window.location.search).get("demoServerStatus") ?? i.status,
+          gpu: `${i.gpu} × ${i.gpu_amount}`, region_name: i.region_name, note: null,
         })),
         ...myServers.map((s) => ({
           id: `srv:${s.id}`, kind: "custom", name: s.name, host: s.host, port: s.port, user: s.user,

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { HOSTKEY_CHANGED, LINKS, call, openExternal, setSetting, type HostEntry, type Overview, type Probe, type ServerList, type ServerRecord, type ServerView, type Settings, type Watch } from "../api";
 import { Icon } from "../icons";
 import { SshConfigEditor } from "../SshConfigEditor";
+import { ServerPowerControls } from "../ServerPowerControls";
 import { formatBytes as gb, formatDuration as dur, sshCommand as sshCmd } from "../format";
 import { ApiFormatHelp, Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
 
@@ -42,10 +43,9 @@ function Spark({ values, dash, warn }: { values: (number | null)[]; dash?: numbe
   );
 }
 
-function StatusPanel({ v, onChanged, live, setLive }: { v: ServerView; onChanged: () => void; live: boolean; setLive: (on: boolean) => void }) {
+function StatusPanel({ v, live, setLive }: { v: ServerView; live: boolean; setLive: (on: boolean) => void }) {
   const { data, err, loading, refresh, history, streaming, liveErr } = useServerStatus(v.id, live);
   const now = useNowSec();
-  const { busy, run } = useAction();
   const idle = !!data && v.kind === "autodl" && data.gpus.length > 0 && data.gpus.every((g) => g.util < 5);
   const hasCurve = history.length >= 2;
   return (
@@ -76,9 +76,7 @@ function StatusPanel({ v, onChanged, live, setLive }: { v: ServerView; onChanged
             <Group className="idle-banner">
               <div className="group-row" style={{ gap: 12 }}>
                 <Icon name="yen" size={20} stroke={2} />
-                <span className="grow">显卡几乎没在用，但实例还在计费。不用的话可以关机（数据会保留）。</span>
-                <ConfirmButton icon="stop" className="btn" label="关机" confirmLabel="再点一次关机" disabled={busy}
-                  onConfirm={async () => { const r = await run(() => call("regular_power_off", { uuid: v.id.slice(7) }), "已发送关机请求"); if (r !== undefined) setTimeout(onChanged, 1500); }} />
+                <span className="grow">显卡几乎没在用，但实例还在计费。不用的话可以在上方「实例开关机」里关机，磁盘数据会保留。</span>
               </div>
             </Group>
           )}
@@ -230,6 +228,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
         <Btn icon="pulse" spinning={testing} disabled={noSsh} onClick={test}>测试连接</Btn>
       </div>
       {noSsh && <div className="group-foot" style={{ textAlign: "center" }}>这台实例还没有 SSH 信息，开机后再来。</div>}
+      <ServerPowerControls key={v.id} server={v} onChanged={onChanged} />
 
       <AnimatePresence>
         {probe && (
@@ -252,7 +251,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
         )}
       </AnimatePresence>
 
-      {!noSsh && (v.kind !== "autodl" || v.status === "running") && <StatusPanel v={v} onChanged={onChanged} live={live} setLive={setLive} />}
+      {!noSsh && (v.kind !== "autodl" || v.status === "running") && <StatusPanel v={v} live={live} setLive={setLive} />}
       {!noSsh && <WatchEditor v={v} />}
 
       <div className="group-label">连接</div>
@@ -276,7 +275,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
             <Row icon="gpu_s" label="显卡" value={v.gpu ?? "—"} />
             <Row icon="pin" label="区域" value={v.region_name ?? "—"} />
           </Group>
-          <div className="group-foot">AutoDL 实例重新开机后 SSH 端口可能变，开着「自动同步」就不用管。开关机在「我的实例」里。</div>
+          <div className="group-foot">AutoDL 实例重新开机后 SSH 端口可能变，刷新后可重新同步；开启「自动同步」会自动更新 SSH 配置。</div>
         </>
       ) : (
         <>
