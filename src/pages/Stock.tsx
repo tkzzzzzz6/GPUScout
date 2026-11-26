@@ -405,7 +405,7 @@ export default function StockPage({ snap, go }: { snap: Snapshot | null; go: (p:
             ) : (
               <>
                 {snap.has_token
-                  ? <Btn primary icon="power" onClick={() => go("templates")}>用模板开一台</Btn>
+                  ? <Btn primary icon="power" onClick={() => go("templates")}>选择租用方案</Btn>
                   : <Btn primary icon="external" onClick={() => openExternal(hits[0]?.market_url || LINKS.market)}>{hits.length ? `去租 ${ruleById.get(hits[0].rule_id)!.gpu_keyword}` : "去算力市场租"}</Btn>}
                 {snap.has_token && hits.length > 0 && <Btn icon="external" onClick={() => openExternal(hits[0].market_url || LINKS.market)}>去算力市场租</Btn>}
                 <Btn icon="list" onClick={() => go("rules")}>查看规则</Btn>

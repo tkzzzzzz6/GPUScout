@@ -7,7 +7,7 @@ import appIcon from "./assets/app-icon.svg";
 import StockPage from "./pages/Stock";
 import RulesPage from "./pages/Rules";
 import InstancesPage from "./pages/Instances";
-import TemplatesPage from "./pages/Templates";
+import TemplatesPage from "./pages/RentalPlans";
 import LogsPage from "./pages/Logs";
 import AnalysisPage from "./pages/Analysis";
 import SettingsPage from "./pages/Settings";
@@ -63,7 +63,7 @@ export default function App() {
     { id: "analysis", label: "抢卡时段" },
     { id: "instances", label: "我的实例" },
     { id: "servers", label: "服务器" },
-    { id: "templates", label: "创建模板" },
+    { id: "templates", label: "租用方案" },
     { id: "logs", label: "日志" },
     { id: "settings", label: "设置" },
   ];
@@ -115,7 +115,7 @@ export default function App() {
               {page === "rules" && <RulesPage snap={snap} />}
               {page === "servers" && <ServersPage />}
               {page === "instances" && <InstancesPage hasToken={!!snap?.has_token} hasWebToken={!!snap?.has_web_token} go={setPage} />}
-              {page === "templates" && <TemplatesPage hasToken={!!snap?.has_token} />}
+              {page === "templates" && <TemplatesPage hasToken={!!snap?.has_token} go={()=>setPage("stock")} />}
               {page === "analysis" && <AnalysisPage />}
               {page === "logs" && <LogsPage />}
               {page === "settings" && <SettingsPage hasToken={!!snap?.has_token} hasWebToken={!!snap?.has_web_token} webTokenExp={snap?.web_token_exp ?? null} />}
