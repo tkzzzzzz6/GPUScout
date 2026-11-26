@@ -284,6 +284,14 @@ impl Monitor {
         let _round = self.tick_guard.lock().await;
     }
 
+    pub async fn import_configuration(&self, text: &str, mode: crate::transfer::ImportMode) -> Result<crate::transfer::Imported, String> {
+        // 等待整轮自动动作结束，再原子替换规则，避免旧规则在替换后继续执行。
+        let _round = self.tick_guard.lock().await;
+        let result = self.store.import_configuration(text, mode)?;
+        self.trigger();
+        Ok(result)
+    }
+
     fn update<F: FnOnce(&mut Snapshot)>(&self, app: &AppHandle, f: F) {
         {
             let mut s = self.snapshot.write().unwrap();
@@ -860,6 +868,22 @@ pub fn parse_time_field(v: Option<&serde_json::Value>) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn configuration_import_waits_until_the_current_monitor_round_is_finished() {
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let json = store.configuration_json().unwrap();
+        let monitor = Monitor::new(store.clone(), None, None);
+        let round = monitor.tick_guard.lock().await;
+        let pending = monitor.clone();
+        let task = tokio::spawn(async move { pending.import_configuration(&json, crate::transfer::ImportMode::Append).await });
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        assert_eq!(store.rules().unwrap().len(), 4);
+        drop(round);
+        assert_eq!(task.await.unwrap().unwrap().rules, 4);
+        assert_eq!(store.rules().unwrap().len(), 8);
+    }
 
     #[test]
     fn format_errors_are_logged_once_even_when_several_regions_fail() {

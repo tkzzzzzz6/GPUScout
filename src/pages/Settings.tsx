@@ -4,6 +4,7 @@ import { LINKS, call, openExternal, type Balance, type Settings } from "../api";
 import { AutostartSettings } from "../AutostartSettings";
 import { Btn, ConfirmButton, FormRow, Group, Page, Row, Stepper, Switch, copy, useAction, useRefData, useToast } from "../ui";
 import { UpdateSettings } from "../UpdateSettings";
+import { ConfigurationTransfer } from "../ConfigurationTransfer";
 
 const CMD = "copy(localStorage.token)";
 
@@ -137,6 +138,7 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
             <div className="group-foot">实时刷新：打开服务器详情时每 2 秒更新一次并画出最近 5 分钟的曲线，关掉面板或最小化窗口就停；关掉这项回到 30 秒刷新。列表状态：「服务器」页开着时每 10 秒采集一次每台的 GPU 利用率和显存；关掉就不连服务器。</div>
 
             <AutostartSettings />
+            <ConfigurationTransfer />
 
             <motion.div initial={false} animate={{ opacity: dirty ? 1 : .5, y: dirty ? 0 : 4 }} transition={{ duration: .2 }}
               className="row" style={{ marginTop: 22 }}>

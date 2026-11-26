@@ -273,6 +273,10 @@ impl Store {
 
     pub fn rules(&self) -> R<Vec<Rule>> {
         let c = self.conn.lock().unwrap();
+        Self::rules_in(&c)
+    }
+
+    fn rules_in(c: &Connection) -> R<Vec<Rule>> {
         let mut st = c
             .prepare(
                 "SELECT id,name,enabled,region_sign,gpu_keyword,min_idle,cuda_v_from,max_price_yuan,
@@ -306,6 +310,10 @@ impl Store {
 
     pub fn save_rule(&self, r: Rule) -> R<i64> {
         let c = self.conn.lock().unwrap();
+        Self::save_rule_in(&c, r)
+    }
+
+    fn save_rule_in(c: &Connection, r: Rule) -> R<i64> {
         if r.id > 0 {
             c.execute(
                 "UPDATE rules SET name=?1,enabled=?2,region_sign=?3,gpu_keyword=?4,min_idle=?5,cuda_v_from=?6,
@@ -351,6 +359,10 @@ impl Store {
 
     pub fn templates(&self) -> R<Vec<Template>> {
         let c = self.conn.lock().unwrap();
+        Self::templates_in(&c)
+    }
+
+    fn templates_in(c: &Connection) -> R<Vec<Template>> {
         let mut st = c
             .prepare(
                 "SELECT id,name,gpu_spec_uuid,gpu_amount,data_center_list,image_uuid,cuda_v_from,expand_disk_gb,
@@ -382,8 +394,12 @@ impl Store {
     }
 
     pub fn save_template(&self, t: Template) -> R<i64> {
-        let dcl = serde_json::to_string(&t.data_center_list).unwrap();
         let c = self.conn.lock().unwrap();
+        Self::save_template_in(&c, t)
+    }
+
+    fn save_template_in(c: &Connection, t: Template) -> R<i64> {
+        let dcl = serde_json::to_string(&t.data_center_list).unwrap();
         if t.id > 0 {
             c.execute(
                 "UPDATE templates SET name=?1,gpu_spec_uuid=?2,gpu_amount=?3,data_center_list=?4,image_uuid=?5,
@@ -416,6 +432,38 @@ impl Store {
     }
 
     // ---------- history ----------
+
+    /// 同一把数据库锁下取快照，导出时规则引用的模板不会在两次查询之间被修改。
+    pub fn configuration_json(&self) -> R<String> {
+        let c = self.conn.lock().unwrap();
+        crate::transfer::encode(Self::rules_in(&c)?, Self::templates_in(&c)?)
+    }
+
+    pub fn import_configuration(&self, text: &str, mode: crate::transfer::ImportMode) -> R<crate::transfer::Imported> {
+        let bundle = crate::transfer::parse(text)?;
+        let result = crate::transfer::Imported { rules: bundle.rules.len(), templates: bundle.templates.len() };
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction().map_err(e)?;
+        if matches!(mode, crate::transfer::ImportMode::Replace) {
+            tx.execute("DELETE FROM rules", []).map_err(e)?;
+            tx.execute("DELETE FROM templates", []).map_err(e)?;
+        }
+        let mut ids = std::collections::HashMap::new();
+        for mut template in bundle.templates {
+            let old = template.id;
+            template.id = 0;
+            ids.insert(old, Self::save_template_in(&tx, template)?);
+        }
+        for mut rule in bundle.rules {
+            rule.id = 0;
+            rule.action = "notify".into();
+            rule.last_fired_at = None;
+            rule.template_id = rule.template_id.and_then(|id| ids.get(&id).copied());
+            Self::save_rule_in(&tx, rule)?;
+        }
+        tx.commit().map_err(e)?;
+        Ok(result)
+    }
 
     pub fn insert_history(&self, ts: i64, region: &str, items: &[StockItem]) -> R<()> {
         let mut c = self.conn.lock().unwrap();
@@ -630,6 +678,67 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn automatic_configuration() -> (Store, String) {
+        let source = Store::open_in_memory().unwrap();
+        let template = source.templates().unwrap()[0].id;
+        for (index, mut rule) in source.rules().unwrap().into_iter().enumerate() {
+            rule.action = ["notify", "create", "power_on", "notify"][index].into();
+            rule.template_id = Some(template);
+            rule.instance_uuid = Some("fake-pro-instance".into());
+            source.save_rule(rule.clone()).unwrap();
+            source.mark_rule_fired(rule.id, 123).unwrap();
+        }
+        source.kv_set("web_token", "fake-secret-token").unwrap();
+        source.save_server(Server { name:"private-server".into(), host:"private-host.example".into(), ..Default::default() }).unwrap();
+        let json = source.configuration_json().unwrap();
+        (source, json)
+    }
+
+    #[test]
+    fn configuration_round_trip_remaps_templates_and_disables_all_automatic_actions() {
+        let (source, json) = automatic_configuration();
+        assert!(!json.contains("fake-secret-token") && !json.contains("private-server") && !json.contains("private-host"));
+        assert!(!json.contains("last_fired_at") && !json.contains("auto_min_balance_yuan"));
+        let parsed = crate::transfer::parse(&json).unwrap();
+        assert_eq!(parsed.preview().automatic_rules, 2);
+        for mode in [crate::transfer::ImportMode::Append, crate::transfer::ImportMode::Replace] {
+            let target = Store::open_in_memory().unwrap();
+            target.kv_set("web_token", "keep-this-token").unwrap();
+            let old_max = target.rules().unwrap().iter().map(|rule| rule.id).max().unwrap();
+            let result = target.import_configuration(&json, mode).unwrap();
+            assert_eq!((result.rules, result.templates), (4, 1));
+            let rules = target.rules().unwrap();
+            assert_eq!(rules.len(), if matches!(mode, crate::transfer::ImportMode::Append) { 8 } else { 4 });
+            let imported: Vec<_> = rules.into_iter().filter(|rule| rule.id > old_max).collect();
+            assert_eq!(imported.len(), 4);
+            for (actual, mut expected) in imported.into_iter().zip(source.rules().unwrap()) {
+                assert_eq!(actual.action, "notify"); assert!(actual.last_fired_at.is_none());
+                let template = target.template(actual.template_id.unwrap()).unwrap().unwrap();
+                let mut expected_template = source.template(expected.template_id.unwrap()).unwrap().unwrap();
+                expected_template.id = template.id;
+                assert_eq!(serde_json::to_value(template).unwrap(), serde_json::to_value(expected_template).unwrap());
+                expected.id = actual.id; expected.action = "notify".into(); expected.last_fired_at = None; expected.template_id = actual.template_id;
+                assert_eq!(serde_json::to_value(actual).unwrap(), serde_json::to_value(expected).unwrap());
+            }
+            assert_eq!(target.kv_get("web_token").unwrap().as_deref(), Some("keep-this-token"));
+        }
+    }
+
+    #[test]
+    fn failed_configuration_import_rolls_back_deletions_and_insertions() {
+        let (_, json) = automatic_configuration();
+        let target = Store::open_in_memory().unwrap();
+        let original = target.configuration_json().unwrap();
+        let mut invalid: serde_json::Value = serde_json::from_str(&json).unwrap();
+        invalid["version"] = serde_json::json!(999);
+        assert!(target.import_configuration(&invalid.to_string(), crate::transfer::ImportMode::Replace).is_err());
+        assert_eq!(target.configuration_json().unwrap(), original);
+        // 强制在模板写入后、第一条规则写入时失败，验证替换删除也能完整回滚。
+        target.conn.lock().unwrap().execute_batch("CREATE TRIGGER fail_import BEFORE INSERT ON rules BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;").unwrap();
+        assert!(target.import_configuration(&json, crate::transfer::ImportMode::Replace).is_err());
+        assert_eq!(target.configuration_json().unwrap(), original);
+    }
 
     #[test]
     fn longer_history_is_only_the_default_for_new_installations() {
