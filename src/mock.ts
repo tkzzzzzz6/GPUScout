@@ -343,6 +343,13 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     open_terminal: () => {},
     open_vscode: () => { if (!sshSynced) throw "NEED_SYNC|VS Code 要通过 SSH 配置里的名字连接，先点「同步到 SSH 配置」"; },
     server_password: () => "xxxxxx",
+    restart_server: () => {
+      if (typeof a.id !== "string" || !a.id.startsWith("srv:")) throw "重新启动只支持「我的服务器」";
+      const mode = new URLSearchParams(window.location.search).get("demoServerRestart");
+      if (mode === "denied") throw "未成功提交重启请求。请确认非 root 账户有 /sbin/shutdown 的免密 sudo 权限";
+      return mode === "unknown" ? { status: "unknown", message: "连接中断或结果不完整，无法确认重启请求是否已提交。请先通过终端检查服务器状态，不要立即重复重启；软件没有自动重发。" }
+        : { status: "submitted", message: "重启请求已提交，服务器约一分钟后重启。请稍候再点「测试连接」恢复状态采集。" };
+    },
     test_server: () => (a.id === "srv:2"
       ? (() => { throw "HOSTKEY_CHANGED:SHA256:fake|47.100.12.9:22 的主机密钥和上次连接时不一样。AutoDL 实例换了机器或重装系统时会这样，也可能是有人冒充。确认没问题后可以信任新的密钥。"; })()
       : { ms: 86, system: "Linux 5.15.0-105-generic x86_64 · Ubuntu 22.04.4 LTS", via_key: true }),

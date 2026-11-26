@@ -90,6 +90,7 @@ src-tauri/src/
   regions.rs    区域、Pro 规格、公共镜像对照表
   heatmap.rs    库存历史按星期/小时聚合，统计日期覆盖和采样日，生成时段结论
   servers.rs    AutoDL 与自有服务器统一视图、SSH 命名、同步校验和错误状态
+  reboot.rs     自有 Linux 服务器重启的固定命令、单次提交结果与间隔保护
   ssh.rs        SSH 连接池、认证、流式采集、主机密钥记忆、软件密钥生成与推送
   sshconfig.rs  SSH 配置解析、静态 Include 冲突检查、管理段备份与写入、目标校验
   serverstat.rs 服务器采集脚本、GPU/进程/磁盘解析与空闲/训练结束/磁盘提醒
@@ -116,6 +117,7 @@ src/
   autostart.ts / AutostartSettings.tsx  系统启动项状态控制与设置界面
   updates.ts / UpdateSettings.tsx      更新检查/下载/安装控制、设置与顶栏提醒
   ConfigurationTransfer.tsx           规则模板导出、选择文件、导入预览与确认
+  SshConfigEditor.tsx / ServerRestartControls.tsx  本机 SSH 文本编辑与自有服务器重启
   api.test.ts / format.test.ts         Node 环境的 Vitest 纯函数测试
   vite-env.d.ts                        Vite 环境类型
   pages/

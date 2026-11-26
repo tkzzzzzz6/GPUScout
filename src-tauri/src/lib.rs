@@ -6,6 +6,7 @@ pub mod monitor;
 mod notify;
 pub mod price;
 pub mod regions;
+mod reboot;
 pub mod servers;
 pub mod serverstat;
 pub mod ssh;
@@ -127,6 +128,7 @@ pub fn run() {
             commands::open_vscode,
             commands::server_password,
             commands::test_server,
+            commands::restart_server,
             commands::ensure_ssh_key,
             commands::push_ssh_key,
             commands::trust_host_key,

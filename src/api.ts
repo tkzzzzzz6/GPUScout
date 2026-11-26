@@ -52,6 +52,7 @@ export interface HostEntry { alias: string; host: string; port: number; user: st
 export interface SshConfigDocument { path: string; content: string; exists: boolean }
 export interface SshConfigSaved { document: SshConfigDocument; changed: boolean; backup_path: string | null }
 export interface Probe { ms: number; system: string; via_key: boolean }
+export interface RestartResult { status: "submitted" | "unknown"; message: string }
 export const HOSTKEY_CHANGED = "HOSTKEY_CHANGED:";
 export interface Gpu { index: number; uuid: string; name: string; util: number; mem_used_mb: number; mem_total_mb: number; temp: number | null; power_w: number | null }
 export interface GpuProc { gpu: number; pid: number; mem_mb: number; user: string | null; elapsed_secs: number | null; cmd: string | null }
