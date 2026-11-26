@@ -231,7 +231,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
       </div>
       {noSsh && <div className="group-foot" style={{ textAlign: "center" }}>这台实例还没有 SSH 信息，开机后再来。</div>}
       <ServerPowerControls key={v.id} server={v} onChanged={onChanged} />
-      {v.kind === "custom" && <ServerRestartControls id={v.id} paused={restarting} onPaused={() => { setProbe(null); setRestarting(true); }} />}
+      {v.kind === "custom" && <ServerRestartControls server={v} paused={restarting} onPaused={() => { setProbe(null); setRestarting(true); }} />}
 
       <AnimatePresence>
         {probe && (
