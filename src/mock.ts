@@ -176,8 +176,8 @@ function queryFormatError(scope: string, field: string): string | null {
 function readConfiguration(text: string): { rules: Rule[]; templates: Template[] } {
   if (new TextEncoder().encode(text).length > 2 * 1024 * 1024) throw "配置文件超过 2 MiB";
   let data: any;
-  try { data = JSON.parse(text); } catch { throw "配置文件不是有效的 JSON，请选择显卡管家导出的文件"; }
-  if (data?.format !== "autodl-lookout.rules-and-templates") throw "这不是显卡管家的规则和模板配置文件";
+  try { data = JSON.parse(text); } catch { throw "配置文件不是有效的 JSON，请选择GPUScout导出的文件"; }
+  if (data?.format !== "autodl-lookout.rules-and-templates") throw "这不是GPUScout的规则和模板配置文件";
   if (data.version !== 1) throw "不支持这个配置文件的格式版本，请更新软件或重新导出";
   if (!Array.isArray(data.rules) || !Array.isArray(data.templates) || data.rules.length > 1000 || data.templates.length > 500) throw "规则或模板列表不合法";
   const ruleFields = ["id", "name", "enabled", "region_sign", "gpu_keyword", "min_idle", "cuda_v_from", "max_price_yuan", "cooldown_minutes", "action", "template_id", "instance_uuid", "daily_limit", "min_per_machine"];

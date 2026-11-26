@@ -1,15 +1,15 @@
-# AutoDL Lookout · 显卡管家
+# GPUScout
 
 基于 AutoDL 开放 API 的桌面工具（Tauri 2 + Rust + React）：
 监控各区域空闲显卡、有卡时发系统通知（可选自动创建 / 开机 Pro 实例）、管理普通容器实例和容器实例 Pro、余额和长时间运行提醒。
 
-![显卡管家：库存页](docs/screenshots/stock.webp)
+![GPUScout：库存页](docs/screenshots/stock.webp)
 
 <p align="center"><img src="docs/screenshots/demo.gif" width="800" alt="操作演示：点开卡型看实时价格 → 抢卡时段 → 服务器实时状态"></p>
 
 ## 下载
 
-到 [Releases](https://github.com/tkzzzzzz6/autodl-lookout/releases) 下载安装包：
+到 [Releases](https://github.com/tkzzzzzz6/GPUScout/releases) 下载安装包：
 
 | 系统 | 文件 |
 |---|---|
@@ -97,7 +97,7 @@ npm run tauri dev
 
 - 默认所有规则只提醒；需要手动把「触发后」改成自动创建 / 自动开机
 - 每条规则每天最多执行 N 次（失败也计数，避免反复重试）；执行前先在数据库里占名额，并发执行也不会超过上限
-- 同一台电脑只能运行一个显卡管家：再打开一次只会把已有窗口拉到前台，不会出现两个进程重复轮询、重复执行自动动作
+- 同一台电脑只能运行一个 GPUScout：再打开一次只会把已有窗口拉到前台，不会出现两个进程重复轮询、重复执行自动动作
 - 执行前先查余额，低于「开机余额下限」就跳过
 - 单价上限会作为库存查询的 `price_to` 过滤条件
 - 手动开机普通实例：点两次确认；先查余额，查不到或低于「开机余额下限」就不开机；每台实例每天最多手动开机 5 次（无卡模式也算，失败也计数）
@@ -139,6 +139,8 @@ npm run tauri dev
 详细模块职责集中维护在 [AGENTS.md 的目录说明](./AGENTS.md#目录)，新增或调整模块时更新那里。
 
 测试：`npm test`（脚本/Vitest 单测 + 前端检查与打包 + Rust 单测）、`npm run lint:rust`（Clippy）；只看界面：`npm run demo`。
+
+应用展示名和仓库已改为 GPUScout。为兼容已有安装，应用标识、数据库文件名、钥匙串服务名、SSH 管理段和密钥文件名保留原值，旧规则、凭据与服务器配置继续使用。
 
 数据库位置：Windows 在 `%APPDATA%\io.github.tkzzzzzz6.autodl-lookout\autodl-lookout.sqlite3`，macOS 在 `~/Library/Application Support/io.github.tkzzzzzz6.autodl-lookout/`。
 早期开发版的数据在 `dev.local.autodl-lookout`（更早叫 autodl-manager 时在 `dev.local.autodl-manager`），首次启动会自动把旧数据库和凭证搬过来（旧文件保留不动）。

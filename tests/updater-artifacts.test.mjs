@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { collectArtifacts, createManifest, updaterConfig, validatePublicKey, verifySignature } from "../scripts/updater-artifacts.mjs";
 
 const pub = Buffer.from(`untrusted comment: test public key\n${Buffer.concat([Buffer.from("Ed"), Buffer.alloc(40, 1)]).toString("base64")}\n`).toString("base64");
-const names = ["Lookout_0.2.0_x64-setup.exe", "Lookout_0.2.0_x64_en-US.msi", "Lookout_0.2.0_aarch64.dmg", "Lookout_0.2.0_x64.dmg", "Lookout_0.2.0_amd64.deb", "Lookout-0.2.0.x86_64.rpm", "Lookout_0.2.0_amd64.AppImage", "Lookout_aarch64.app.tar.gz", "Lookout_x64.app.tar.gz"];
+const names = ["GPUScout_0.2.0_x64-setup.exe", "GPUScout_0.2.0_x64_en-US.msi", "GPUScout_0.2.0_aarch64.dmg", "GPUScout_0.2.0_x64.dmg", "GPUScout_0.2.0_amd64.deb", "GPUScout-0.2.0.x86_64.rpm", "GPUScout_0.2.0_amd64.AppImage", "GPUScout_aarch64.app.tar.gz", "GPUScout_x64.app.tar.gz"];
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "lookout-manifest-test-"));
   for (const name of names) { writeFileSync(join(dir, name), "test fixture"); writeFileSync(join(dir, `${name}.sig`), "signature fixture"); }
@@ -32,7 +32,7 @@ test("清单使用四个目标平台、最终文件名和签名内容", () => {
     assert.equal(manifest.version, "0.2.0");
     assert.equal(Object.keys(manifest.platforms).length, 4);
     assert.equal(manifest.platforms["darwin-aarch64"].signature, "signature fixture");
-    assert.match(manifest.platforms["windows-x86_64"].url, /v0.2.0\/Lookout_0.2.0_x64-setup.exe$/);
+    assert.match(manifest.platforms["windows-x86_64"].url, /v0.2.0\/GPUScout_0.2.0_x64-setup.exe$/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -54,13 +54,13 @@ test("两个 macOS 架构的同名更新包和签名不会覆盖", () => {
   try {
     for (const arch of ["aarch64", "x64"]) {
       const bundle = join(temp, "download", `bundle-macos-${arch}`, "macos"); mkdirSync(bundle, { recursive: true });
-      writeFileSync(join(bundle, "AutoDL Lookout.app.tar.gz"), arch);
-      writeFileSync(join(bundle, "AutoDL Lookout.app.tar.gz.sig"), `${arch}-sig`);
+      writeFileSync(join(bundle, "GPUScout Preview.app.tar.gz"), arch);
+      writeFileSync(join(bundle, "GPUScout Preview.app.tar.gz.sig"), `${arch}-sig`);
     }
     const out = join(temp, "out"); mkdirSync(out);
     collectArtifacts(join(temp, "download"), out);
-    assert.equal(readFileSync(join(out, "AutoDL.Lookout_aarch64.app.tar.gz"), "utf8"), "aarch64");
-    assert.equal(readFileSync(join(out, "AutoDL.Lookout_x64.app.tar.gz.sig"), "utf8"), "x64-sig");
+    assert.equal(readFileSync(join(out, "GPUScout.Preview_aarch64.app.tar.gz"), "utf8"), "aarch64");
+    assert.equal(readFileSync(join(out, "GPUScout.Preview_x64.app.tar.gz.sig"), "utf8"), "x64-sig");
   } finally { rmSync(temp, { recursive: true, force: true }); }
 });
 

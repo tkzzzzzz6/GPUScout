@@ -51,7 +51,7 @@ npm audit --audit-level=high # 依赖审计，阻止带高危或严重问题的�
 
 ## 项目是什么
 
-**AutoDL Lookout（显卡管家）**：基于 Tauri 2 的桌面工具，盯着 [AutoDL](https://www.autodl.com) 各区域的空闲显卡，有卡时推送系统通知，可选在有卡时自动创建 / 开机「容器实例 Pro」。
+**GPUScout**：基于 Tauri 2 的桌面工具，盯着 [AutoDL](https://www.autodl.com) 各区域的空闲显卡，有卡时推送系统通知，可选在有卡时自动创建 / 开机「容器实例 Pro」。
 
 - 后端：Rust（`src-tauri/`），负责调用 AutoDL、轮询、规则判断、通知、SQLite 存储、托盘
 - 前端：React 19 + TypeScript + Vite（`src/`），动效用 [Motion](https://motion.dev)（`motion/react`）

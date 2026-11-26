@@ -249,7 +249,7 @@ fn read_snapshot_at(path: &std::path::Path) -> Result<ConfigSnapshot, String> {
 pub fn render_block(entries: &[HostEntry]) -> String {
     let mut s = String::new();
     s.push_str(BEGIN);
-    s.push_str("\n# 由 AutoDL Lookout 自动生成，下次同步会被覆盖；要自定义请写在这一段外面\n");
+    s.push_str("\n# 由 GPUScout 自动生成，下次同步会被覆盖；要自定义请写在这一段外面\n");
     for h in entries {
         s.push_str(&format!("Host {}\n    HostName {}\n    Port {}\n    User {}\n", h.alias, h.host, h.port, h.user));
         if let Some(f) = &h.identity_file {

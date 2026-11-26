@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AutoDL Lookout",
+  "productName": "GPUScout",
   "version": "0.1.1",
   "identifier": "io.github.tkzzzzzz6.autodl-lookout",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "AutoDL Lookout · 显卡管家",
+        "title": "GPUScout",
         "width": 1240,
         "height": 820,
         "minWidth": 980,
@@ -30,8 +30,8 @@
     "publisher": "tkzzzzzz6",
     "copyright": "Copyright © 2026 tkzzzzzz6. MIT License.",
     "category": "DeveloperTool",
-    "shortDescription": "显卡管家：盯 AutoDL 空闲显卡、管理实例和 GPU 服务器",
-    "longDescription": "AutoDL Lookout（显卡管家）盯着 AutoDL 各区域的空闲显卡，有卡时推送系统通知；还能管理普通实例、容器实例 Pro 和自己的 GPU 服务器。",
+    "shortDescription": "GPUScout：盯 AutoDL 空闲显卡、管理实例和 GPU 服务器",
+    "longDescription": "GPUScout 盯着 AutoDL 各区域的空闲显卡，有卡时推送系统通知；还能管理普通实例、容器实例 Pro 和自己的 GPU 服务器。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -56,7 +56,7 @@
     "updater": {
       "pubkey": "",
       "endpoints": [
-        "https://github.com/tkzzzzzz6/autodl-lookout/releases/latest/download/latest.json"
+        "https://github.com/tkzzzzzz6/GPUScout/releases/latest/download/latest.json"
       ],
       "requireSignedVersion": true,
       "windows": {

@@ -171,8 +171,8 @@ export function regionOptions(regions: Opt[]) {
 }
 
 export const LINKS = {
-  issues: "https://github.com/tkzzzzzz6/autodl-lookout/issues",
-  releases: "https://github.com/tkzzzzzz6/autodl-lookout/releases/latest",
+  issues: "https://github.com/tkzzzzzz6/GPUScout/issues",
+  releases: "https://github.com/tkzzzzzz6/GPUScout/releases/latest",
   devToken: "https://www.autodl.com/console/center/settings/token",
   proDocs: "https://www.autodl.com/docs/instance_pro_api/",
   market: "https://www.autodl.com/market/list",

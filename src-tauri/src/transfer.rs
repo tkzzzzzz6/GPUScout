@@ -46,8 +46,8 @@ pub fn encode(rules: Vec<Rule>, templates: Vec<Template>) -> Result<String, Stri
 
 pub fn parse(text: &str) -> Result<Bundle, String> {
     if text.len() > MAX_BYTES { return Err("配置文件超过 2 MiB，请减少规则或模板数量后重试".into()); }
-    let value: serde_json::Value = serde_json::from_str(text).map_err(|_| "配置文件不是有效的 JSON，请选择显卡管家导出的规则和模板文件".to_string())?;
-    if value.get("format").and_then(|v| v.as_str()) != Some(FORMAT) { return Err("这不是显卡管家的规则和模板配置文件".into()); }
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|_| "配置文件不是有效的 JSON，请选择GPUScout导出的规则和模板文件".to_string())?;
+    if value.get("format").and_then(|v| v.as_str()) != Some(FORMAT) { return Err("这不是GPUScout的规则和模板配置文件".into()); }
     if value.get("version").and_then(|v| v.as_u64()) != Some(1) { return Err("不支持这个配置文件的格式版本，请更新软件或重新导出".into()); }
     // 不接收凭据、服务器、运行状态等扩展字段，也不把字段值放进错误消息。
     for (key, allowed) in [("rules", RULE_FIELDS), ("templates", TEMPLATE_FIELDS)] {
@@ -98,7 +98,7 @@ pub fn read_file(path: &std::path::Path) -> Result<String, String> {
     let mut bytes = Vec::new();
     file.take((MAX_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(|_| "读取配置文件失败，请重试".to_string())?;
     if bytes.len() > MAX_BYTES { return Err("配置文件超过 2 MiB，请减少规则或模板数量后重试".into()); }
-    String::from_utf8(bytes).map_err(|_| "配置文件不是 UTF-8 文本，请选择显卡管家导出的 JSON 文件".into())
+    String::from_utf8(bytes).map_err(|_| "配置文件不是 UTF-8 文本，请选择GPUScout导出的 JSON 文件".into())
 }
 
 #[cfg(test)]

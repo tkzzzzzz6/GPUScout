@@ -1,6 +1,6 @@
 # 参与贡献
 
-感谢你愿意改进 AutoDL Lookout！提 issue、修 bug、改文案、加功能都欢迎。
+感谢你愿意改进 GPUScout！提 issue、修 bug、改文案、加功能都欢迎。
 
 本仓库所有改动都走 **issue → 分支 → PR → 维护者审阅合并**，人和 AI 编码助手都一样。完整的协作规则、项目背景和各种约定写在 [AGENTS.md](./AGENTS.md)，动手前请读一遍，尤其是「两种凭证」「已知坑」「安全和钱」几节。
 
@@ -23,8 +23,8 @@
 - macOS：Xcode Command Line Tools（`xcode-select --install`）
 
 ```bash
-git clone https://github.com/tkzzzzzz6/autodl-lookout.git
-cd autodl-lookout
+git clone https://github.com/tkzzzzzz6/GPUScout.git
+cd GPUScout
 npm ci
 npm run demo          # 离线演示：浏览器 + 假数据，不需要 AutoDL 账号
 npm run tauri dev     # 桌面开发模式（需要在「设置」里填网页登录凭证）
@@ -72,7 +72,7 @@ Dependabot 触发的 CI 不应依赖 AutoDL 凭证或仓库 secrets。保持 `pu
 ## 安全
 
 - **不要**在 issue、PR、日志、截图或测试里贴出任何真实凭证（网页登录凭证、开发者 Token）。网页登录凭证等同于登录状态，泄露后请立即在 AutoDL 网页上退出登录让它失效；开发者 Token 请到控制台删除并重新生成。
-- 安全问题请通过 [Security Advisory](https://github.com/tkzzzzzz6/autodl-lookout/security/advisories/new) 私下报告，不要公开提 issue。
+- 安全问题请通过 [Security Advisory](https://github.com/tkzzzzzz6/GPUScout/security/advisories/new) 私下报告，不要公开提 issue。
 
 ## 关于 AutoDL 接口
 
