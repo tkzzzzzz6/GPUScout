@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { HOSTKEY_CHANGED, LINKS, call, openExternal, setSetting, type HostEntry, type Overview, type Probe, type ServerList, type ServerRecord, type ServerView, type Settings, type Watch } from "../api";
 import { Icon } from "../icons";
 import { formatBytes as gb, formatDuration as dur, sshCommand as sshCmd } from "../format";
-import { Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
+import { ApiFormatHelp, Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
 
 const STATUS: Record<string, [string, string]> = {
   running: ["运行中", "on"], shutdown: ["已关机", ""], starting: ["开机中", "warn"], shutting_down: ["关机中", "warn"],
@@ -468,7 +468,7 @@ export default function ServersPage() {
         <Btn small icon="refresh" disabled={loading || busy} spinning={loading} onClick={() => { void load(true); }}>刷新</Btn>
       </div>
 
-      {err && <Group style={{ marginBottom: 16 }}><div className="group-row err-text">{err}</div></Group>}
+      {err && <Group style={{ marginBottom: 16 }}><div className="group-row"><div className="grow err-text">{err}</div><ApiFormatHelp message={err} /></div></Group>}
       {list?.ssh_sync_error && (
         <Group style={{ marginBottom: 20 }}>
           <div className="group-row" role="alert"><div>
@@ -492,10 +492,10 @@ export default function ServersPage() {
           <div className="group-label">AutoDL 实例</div>
           <Group>
             <motion.div variants={stagger.container} initial="initial" animate="animate">{autodl.map(row)}</motion.div>
-            {list && autodl.length === 0 && <div className="empty-state">{list.autodl_error ?? "还没有 AutoDL 实例。"}</div>}
+            {list && autodl.length === 0 && <div className="empty-state">{list.autodl_error ?? "还没有 AutoDL 实例。"}<ApiFormatHelp message={list.autodl_error} /></div>}
             {!list && !err && <div className="empty-state">正在读取…</div>}
           </Group>
-          {list?.autodl_error && autodl.length > 0 && <div className="group-foot err-text">{list.autodl_error}</div>}
+          {list?.autodl_error && autodl.length > 0 && <div className="group-foot err-text">{list.autodl_error}<ApiFormatHelp message={list.autodl_error} /></div>}
         </div>
         <div>
           <div className="group-label">我的服务器</div>

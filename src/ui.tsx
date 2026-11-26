@@ -12,6 +12,11 @@ type ToastFn = (msg: string, err?: boolean) => void;
 const ToastCtx = createContext<ToastFn>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
+/** 独立查询可能不进入监控快照，也要在原错误旁提供相同的反馈入口。 */
+export function ApiFormatHelp({ message }: { message: string | null | undefined }) {
+  return isApiFormatError(message) ? <span style={{ marginLeft: 8, flexShrink: 0 }}><Btn small icon="external" onClick={() => openExternal(LINKS.issues)}>到 GitHub 反馈</Btn></span> : null;
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [t, setT] = useState<{ id: number; msg: string; err: boolean } | null>(null);
   const show = useCallback<ToastFn>((msg, err = false) => setT({ id: Date.now(), msg, err }), []);

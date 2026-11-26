@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { LINKS, call, openExternal, timeFieldTs, type Instance, type InstancePage, type RegularInstance } from "../api";
 import { Icon } from "../icons";
 import { nextDelay, hoursSince } from "../format";
-import { Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, copy, stagger, useAction, useToast } from "../ui";
+import { ApiFormatHelp, Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, copy, stagger, useAction, useToast } from "../ui";
 
 const STATUS: Record<string, [string, string]> = {
   running: ["运行中", "on"], shutdown: ["已关机", ""], shutting_down: ["关机中", "warn"],
@@ -220,7 +220,7 @@ function InstanceList({ loading, onRefresh, err, loaded, empty, emptyText, child
       <div className="row" style={{ justifyContent: "flex-end", marginTop: -8, marginBottom: 12 }}>
         <Btn small icon="refresh" spinning={loading} onClick={onRefresh}>刷新</Btn>
       </div>
-      {err && <Group style={{ marginBottom: 16 }}><div className="group-row err-text">{err}</div></Group>}
+      {err && <Group style={{ marginBottom: 16 }}><div className="group-row"><div className="grow err-text">{err}</div><ApiFormatHelp message={err} /></div></Group>}
       <Group>
         <motion.div variants={stagger.container} initial="initial" animate="animate">{children}</motion.div>
         {loaded && empty && (

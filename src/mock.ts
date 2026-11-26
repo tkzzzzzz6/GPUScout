@@ -168,6 +168,11 @@ function sshNamingIssue(): string | null {
   return null;
 }
 
+function queryFormatError(scope: string, field: string): string | null {
+  return new URLSearchParams(window.location.search).get("demoApiFormatError") === scope
+    ? `AutoDL 的接口格式好像变了（${field} 字段缺失或类型不正确），相关数字暂时不可信。请到 GitHub 更新软件或反馈` : null;
+}
+
 function readConfiguration(text: string): { rules: Rule[]; templates: Template[] } {
   if (new TextEncoder().encode(text).length > 2 * 1024 * 1024) throw "配置文件超过 2 MiB";
   let data: any;
@@ -261,7 +266,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     },
     delete_template: () => { templates = templates.filter((t) => t.id !== a.id); },
     list_instances: () => instances,
-    list_regular_instances: () => regular,
+    list_regular_instances: () => { const error = queryFormatError("instances", "instance.list"); if (error) throw error; return regular; },
     regular_instance_password: () => "xxxxxx",
     regular_power_on: () => { regular = regular.map((i) => (i.uuid === a.uuid ? { ...i, status: "running", started_at: now() } : i)); },
     regular_power_off: () => { regular = regular.map((i) => (i.uuid === a.uuid ? { ...i, status: "shutdown", started_at: null, stopped_at: now() } : i)); },
@@ -272,6 +277,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }),
     // 假价格：几个价位，机器上空闲 1~8 张
     gpu_prices: () => {
+      const error = queryFormatError("prices", "machine.gpu_idle_num"); if (error) throw error;
       const g = String(a.gpu);
       const base = /5090/.test(g) ? 3.08 : /4090D/.test(g) ? 1.68 : /4090/.test(g) ? 1.88 : /3090/.test(g) ? 1.38 : 2.28;
       const tiers = [0, 0.2, 0.5].map((d, i) => ({
@@ -286,10 +292,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     },
     list_servers: () => {
       const issue = sshNamingIssue();
-      if (autoSync && !issue) sshSynced = true;
+      const autodlError = queryFormatError("servers", "instance.list");
+      if (autoSync && !issue && !autodlError) sshSynced = true;
       return ({
       servers: [
-        ...regular.map((i) => ({
+        ...(autodlError ? [] : regular).map((i) => ({
           id: `autodl:${i.uuid}`, kind: "autodl", name: i.name || `${i.gpu} 实例`, host: i.ssh_command.split("@")[1] ?? "",
           port: Number(i.ssh_command.split(" ")[2]) || 22, user: "root", alias: i.name,
           alias_ready: sshSynced && !issue, auth: "password", key_path: null, has_password: true, key_pushed: i.uuid === regular[0].uuid,
@@ -302,7 +309,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         })),
       ],
       ssh_sync_error: issue, ssh_name_error: !!issue,
-      autodl_error: null, own_key: ownKey, ssh_config_path: "C:\\Users\\you\\.ssh\\config", auto_sync: autoSync, synced: false,
+      autodl_error: autodlError, own_key: ownKey, ssh_config_path: "C:\\Users\\you\\.ssh\\config", auto_sync: autoSync, synced: false,
     });
     },
     save_server: () => { const sv = a.server as ServerRecord; if (sv.id > 0) myServers = myServers.map((x) => (x.id === sv.id ? sv : x)); else myServers = [...myServers, { ...sv, id: myServers.length + 10 }]; return 1; },
