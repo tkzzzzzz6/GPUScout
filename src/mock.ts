@@ -2,6 +2,8 @@
 import type { LiveEvent, RegularInstance, Rule, ServerRecord, Watch, Settings, Snapshot, Template } from "./api";
 
 const now = () => Math.floor(Date.now() / 1000);
+let sshConfig: string | null = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demoSshConfigMissing")
+  ? null : "# 本机 SSH 配置示例\nHost lab\n    HostName 10.0.0.8\n    User tk\n";
 
 // 和 regions.rs 的 REGIONS 一致（10 个区域），区域菜单的高度和真实情况一样，会出滚动条
 const regionsRef = [
@@ -318,6 +320,16 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       { alias: "lab-3090", host: "10.12.0.31", port: 22, user: "tk", identity_file: "~/.ssh/id_ed25519" },
       { alias: "aliyun", host: "47.100.12.8", port: 22, user: "ubuntu", identity_file: null },
     ],
+    read_ssh_config: () => ({ path: "C:\\Users\\you\\.ssh\\config", content: sshConfig ?? "", exists: sshConfig !== null }),
+    save_ssh_config: () => {
+      if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demoSshConfigConflict")) throw "SSH 配置已被其他程序或自动同步修改。未覆盖文件，你的编辑仍保留；请先复制需要保留的内容，再重新加载合并修改";
+      if (a.original !== sshConfig) throw "SSH 配置已被其他程序修改，请重新加载";
+      if (typeof a.content !== "string" || new TextEncoder().encode(a.content).length > 1024 * 1024 || a.content.includes("\0")) throw "SSH 配置超过 1 MiB 或含无效字符，未保存";
+      const changed = sshConfig !== a.content, existed = sshConfig !== null;
+      sshConfig = a.content as string;
+      return { document: { path: "C:\\Users\\you\\.ssh\\config", content: sshConfig, exists: true }, changed,
+        backup_path: changed && existed ? "C:\\Users\\you\\.ssh\\config.gpuscout.demo.bak" : null };
+    },
     import_ssh_hosts: () => (a.aliases as string[]).length,
     sync_ssh_config: () => { const issue = sshNamingIssue(); if (issue) throw issue; sshSynced = true; return { changed: true, count: 4, path: "C:\\Users\\you\\.ssh\\config" }; },
     set_ssh_auto_sync: () => { autoSync = !!a.on; },

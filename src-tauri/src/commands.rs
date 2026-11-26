@@ -655,6 +655,20 @@ pub fn ssh_config_hosts(st: State<'_, AppState>) -> R<Vec<sshconfig::HostEntry>>
 }
 
 #[tauri::command]
+pub fn read_ssh_config() -> R<sshconfig::ConfigDocument> {
+    sshconfig::read_document()
+}
+
+#[tauri::command]
+pub fn save_ssh_config(st: State<'_, AppState>, original: Option<String>, content: String) -> R<sshconfig::ConfigSaved> {
+    let result = sshconfig::save_document(original.as_deref(), &content)?;
+    if result.changed {
+        let _ = st.store.log(now(), "info", "server", None, "已手动保存本机 SSH 配置（内容不记录，原文件已备份或此前不存在）");
+    }
+    Ok(result)
+}
+
+#[tauri::command]
 pub fn import_ssh_hosts(st: State<'_, AppState>, aliases: Vec<String>) -> R<usize> {
     let text = sshconfig::config_path().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
     let mut n = 0;

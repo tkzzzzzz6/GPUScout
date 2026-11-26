@@ -7,10 +7,102 @@
 use std::path::PathBuf;
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::io::{Read, Write};
 
 pub const BEGIN: &str = "# >>> autodl-lookout >>>";
 pub const END: &str = "# <<< autodl-lookout <<<";
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+const MAX_CONFIG: usize = 1024 * 1024;
+
+#[derive(serde::Serialize)]
+pub struct ConfigDocument {
+    pub path: String,
+    pub content: String,
+    pub exists: bool,
+}
+
+#[derive(serde::Serialize)]
+pub struct ConfigSaved {
+    pub document: ConfigDocument,
+    pub changed: bool,
+    pub backup_path: Option<String>,
+}
+
+/// 编辑器只读主文件，不展开 Include，更不执行 Match exec / ProxyCommand。
+pub fn read_document() -> Result<ConfigDocument, String> {
+    read_document_at(&config_path().ok_or("找不到用户目录")?)
+}
+
+fn read_document_at(path: &std::path::Path) -> Result<ConfigDocument, String> {
+    let content = match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return Err("读不了 SSH 配置，请检查文件权限后重新加载".into()),
+        Ok(meta) => {
+            if !meta.is_file() || meta.file_type().is_symlink() {
+                return Err("SSH 配置是目录或符号链接，请用本机编辑器编辑实际文件".into());
+            }
+            let mut bytes = vec![];
+            std::fs::File::open(path).and_then(|f| f.take((MAX_CONFIG + 1) as u64).read_to_end(&mut bytes))
+                .map_err(|_| "读不了 SSH 配置，请检查文件权限后重新加载")?;
+            if bytes.len() > MAX_CONFIG { return Err("SSH 配置超过 1 MiB，请用本机编辑器编辑".into()); }
+            Some(String::from_utf8(bytes).map_err(|_| "SSH 配置不是 UTF-8 文本，请用本机编辑器转换编码后重新加载")?)
+        }
+    };
+    Ok(ConfigDocument { path: path.display().to_string(), exists: content.is_some(), content: content.unwrap_or_default() })
+}
+
+pub fn save_document(original: Option<&str>, content: &str) -> Result<ConfigSaved, String> {
+    save_document_at(&config_path().ok_or("找不到用户目录")?, original, content)
+}
+
+fn save_document_at(path: &std::path::Path, original: Option<&str>, content: &str) -> Result<ConfigSaved, String> {
+    let _writer = WRITE_LOCK.lock().map_err(|_| "SSH 配置写入锁不可用，请重启软件后重试")?;
+    if content.len() > MAX_CONFIG || content.contains('\0') { return Err("SSH 配置超过 1 MiB 或含无效字符，未保存".into()); }
+    let begins: Vec<_> = content.lines().enumerate().filter(|(_, l)| l.trim() == BEGIN).map(|(n, _)| n).collect();
+    let ends: Vec<_> = content.lines().enumerate().filter(|(_, l)| l.trim() == END).map(|(n, _)| n).collect();
+    if !(begins.is_empty() && ends.is_empty() || begins.len() == 1 && ends.len() == 1 && begins[0] < ends[0]) {
+        return Err("软件管理段的开始/结束标记不完整或重复，请修正后再保存".into());
+    }
+    let old = read_document_at(path)?;
+    if old.exists.then_some(old.content.as_str()) != original {
+        return Err("SSH 配置已被其他程序或自动同步修改。未覆盖文件，你的编辑仍保留；请先复制需要保留的内容，再重新加载合并修改".into());
+    }
+    if old.exists && old.content == content { return Ok(ConfigSaved { document: old, changed: false, backup_path: None }); }
+    let parent = path.parent().ok_or("SSH 配置路径无效")?;
+    std::fs::create_dir_all(parent).map_err(|_| "创建 .ssh 目录失败，请检查目录权限")?;
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| "系统时间不可用")?.as_nanos();
+    let backup = path.with_file_name(format!("config.gpuscout.{stamp}.bak"));
+    let temp = path.with_file_name(format!(".config.gpuscout.{stamp}.tmp"));
+    let create = |file: &std::path::Path, text: &str| -> std::io::Result<()> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)] {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut f = options.open(file)?;
+        f.write_all(text.as_bytes())?;
+        f.sync_all()
+    };
+    // 每次保存独立备份，包括空文件；不覆盖上一次手动编辑的备份。
+    if old.exists { create(&backup, &old.content).map_err(|_| "备份 SSH 配置失败，原文件未修改")?; }
+    let result = (|| {
+        create(&temp, content).map_err(|_| "写入临时配置失败，原文件未修改")?;
+        if old.exists {
+            let permissions = std::fs::metadata(path).map_err(|_| "读取原文件权限失败")?.permissions();
+            std::fs::set_permissions(&temp, permissions).map_err(|_| "保留配置文件权限失败")?;
+        }
+        // 写完后再检查一次，避免写临时文件期间的外部修改被覆盖。
+        let current = read_document_at(path)?;
+        if current.exists != old.exists || current.content != old.content { return Err("SSH 配置已被其他程序修改，未覆盖文件，请重新加载".to_string()); }
+        std::fs::rename(&temp, path).map_err(|_| "替换 SSH 配置失败，原文件未修改，请检查权限或文件占用")?;
+        Ok(ConfigSaved { document: ConfigDocument { path: old.path, content: content.into(), exists: true },
+            changed: true, backup_path: old.exists.then(|| backup.display().to_string()) })
+    })();
+    if result.is_err() { let _ = std::fs::remove_file(temp); }
+    result
+}
 
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
 pub struct HostEntry {
@@ -329,6 +421,109 @@ pub fn write_block_at(path: &std::path::Path, entries: &[HostEntry]) -> Result<b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct EditorTemp(PathBuf);
+    impl EditorTemp {
+        fn new() -> Self {
+            let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+            let path = std::env::temp_dir().join(format!("gpuscout-editor-{}-{nonce}", std::process::id()));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+        fn config(&self) -> PathBuf { self.0.join("config") }
+    }
+    impl Drop for EditorTemp { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+
+    #[test]
+    fn editor_saves_with_independent_backups_and_keeps_line_endings() {
+        let dir = EditorTemp::new(); let path = dir.config();
+        let original = "# 注释\r\nHost lab\r\n User tk\r\n";
+        std::fs::write(&path, original).unwrap();
+        let document = read_document_at(&path).unwrap();
+        assert!(document.exists); assert_eq!(document.content, original);
+        let unchanged = save_document_at(&path, Some(original), original).unwrap();
+        assert!(!unchanged.changed && unchanged.backup_path.is_none());
+        let next = format!("{original}Host cloud\r\n HostName cloud.example\r\n");
+        let saved = save_document_at(&path, Some(original), &next).unwrap();
+        let first_backup = saved.backup_path.unwrap();
+        assert_eq!(std::fs::read_to_string(&first_backup).unwrap(), original);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), next);
+        let second = save_document_at(&path, Some(&next), original).unwrap();
+        assert_ne!(second.backup_path.as_ref().unwrap(), &first_backup);
+        assert_eq!(std::fs::read_to_string(second.backup_path.unwrap()).unwrap(), next);
+        assert_eq!(std::fs::read_to_string(first_backup).unwrap(), original);
+    }
+
+    #[test]
+    fn editor_creates_missing_file_and_backs_up_empty_file() {
+        let dir = EditorTemp::new(); let path = dir.0.join("new/config");
+        assert!(!read_document_at(&path).unwrap().exists);
+        let created = save_document_at(&path, None, "").unwrap();
+        assert!(created.changed && created.backup_path.is_none() && created.document.exists);
+        let saved = save_document_at(&path, Some(""), "Host lab\n").unwrap();
+        assert_eq!(std::fs::read(saved.backup_path.unwrap()).unwrap(), b"");
+    }
+
+    #[test]
+    fn editor_never_overwrites_external_changes_or_file_creation_and_deletion() {
+        let dir = EditorTemp::new(); let path = dir.config();
+        std::fs::write(&path, "external").unwrap();
+        for baseline in [None, Some("previous")] {
+            assert!(save_document_at(&path, baseline, "mine").err().unwrap().contains("已被"));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "external");
+        }
+        std::fs::remove_file(&path).unwrap();
+        assert!(save_document_at(&path, Some("external"), "mine").is_err());
+        assert!(!path.exists());
+        assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn editor_rejects_invalid_content_and_unreadable_files_without_overwriting() {
+        let dir = EditorTemp::new(); let path = dir.config();
+        std::fs::write(&path, b"\xff\xfe").unwrap();
+        assert!(read_document_at(&path).err().unwrap().contains("UTF-8"));
+        assert!(save_document_at(&path, None, "mine").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"\xff\xfe");
+        let huge = "a".repeat(MAX_CONFIG + 1);
+        std::fs::write(&path, &huge).unwrap();
+        assert!(read_document_at(&path).err().unwrap().contains("1 MiB"));
+        std::fs::write(&path, "original").unwrap();
+        for text in [huge.as_str(), "a\0b", BEGIN, END, &format!("{BEGIN}\n{BEGIN}\n{END}\n")] {
+            assert!(save_document_at(&path, Some("original"), text).is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
+        }
+        assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn editor_does_not_expand_include_or_execute_configuration() {
+        let dir = EditorTemp::new(); let path = dir.config();
+        let include = dir.0.join("extra"); std::fs::write(&include, "unchanged").unwrap();
+        let marker = dir.0.join("must-not-exist");
+        let text = format!("Include extra\nMatch exec \"touch {}\"\n ProxyCommand dangerous\n", marker.display());
+        save_document_at(&path, None, &text).unwrap();
+        assert_eq!(read_document_at(&path).unwrap().content, text);
+        assert!(!marker.exists());
+        assert_eq!(std::fs::read_to_string(include).unwrap(), "unchanged");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn editor_preserves_permissions_and_refuses_symlinks() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = EditorTemp::new(); let path = dir.config();
+        let original = "Host lab\n";
+        std::fs::write(&path, original).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let saved = save_document_at(&path, Some(original), "Host cloud\n").unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o640);
+        assert_eq!(std::fs::metadata(saved.backup_path.unwrap()).unwrap().permissions().mode() & 0o777, 0o600);
+        let link = dir.0.join("linked"); symlink(&path, &link).unwrap();
+        assert!(read_document_at(&link).is_err());
+        assert!(save_document_at(&link, Some("Host cloud\n"), "overwrite").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "Host cloud\n");
+    }
 
     #[test]
     fn parses_autodl_ssh_command() {
