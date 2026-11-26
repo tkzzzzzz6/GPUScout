@@ -300,7 +300,7 @@ function ProInstances() {
   return (
     <>
       <InstanceList loading={loading} onRefresh={load} err={err} loaded={data != null} empty={list.length === 0}
-        emptyText="还没有 Pro 实例。到「创建模板」里用模板一键创建一台。">
+        emptyText="还没有 Pro 实例。到「租用方案 → Pro 模板」里创建一台。">
         {list.map((i) => {
           const h = i.status === "running" ? hoursSince(timeFieldTs(i.started_at)) : null;
           return (

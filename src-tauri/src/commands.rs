@@ -204,7 +204,7 @@ pub fn list_rules(st: State<'_, AppState>) -> R<Vec<Rule>> {
 #[tauri::command]
 pub fn save_rule(st: State<'_, AppState>, rule: Rule) -> R<i64> {
     if rule.action == "create" && rule.template_id.is_none() {
-        return Err("「自动创建实例」需要选择一个创建模板".into());
+        return Err("「自动创建实例」需要选择一个 Pro 模板".into());
     }
     if rule.action == "power_on" && rule.instance_uuid.as_deref().unwrap_or("").trim().is_empty() {
         return Err("「自动开机」需要填写实例 ID".into());
@@ -585,7 +585,7 @@ pub fn log_ui_error(st: State<'_, AppState>, page: String, message: String) -> R
 fn ui_error_line(page: &str, message: &str) -> String {
     const PAGES: [(&str, &str); 8] = [
         ("stock", "库存"), ("rules", "提醒规则"), ("analysis", "抢卡时段"), ("instances", "我的实例"),
-        ("servers", "服务器"), ("templates", "创建模板"), ("logs", "日志"), ("settings", "设置"),
+        ("servers", "服务器"), ("templates", "租用方案"), ("logs", "日志"), ("settings", "设置"),
     ];
     let name = PAGES.iter().find(|(id, _)| *id == page).map_or("未知页面", |(_, n)| n);
     let one_line = message.split_whitespace().collect::<Vec<_>>().join(" ");

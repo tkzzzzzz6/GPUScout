@@ -155,7 +155,7 @@ const instances = {
 
 // 演示模式下 PageBoundary 记下的页面错误，日志页能看到
 const PAGE_NAMES: Record<string, string> = {
-  stock: "库存", rules: "提醒规则", analysis: "抢卡时段", instances: "我的实例", servers: "服务器", templates: "创建模板", logs: "日志", settings: "设置",
+  stock: "库存", rules: "提醒规则", analysis: "抢卡时段", instances: "我的实例", servers: "服务器", templates: "租用方案", logs: "日志", settings: "设置",
 };
 const uiLogs: { id: number; ts: number; level: string; kind: string; rule_id: null; message: string }[] = [];
 

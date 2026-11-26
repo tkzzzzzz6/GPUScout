@@ -45,7 +45,7 @@ export function ConfigurationTransfer() {
       <Row icon="box" label="导入规则和模板" sub="先预览，再选择追加或替换；不会导入凭据和服务器"
         right={<Btn small disabled={busy} onClick={choose}>选择配置文件</Btn>} />
     </Group>
-    <div className="group-foot">文件只含规则和创建模板，不含保存的凭据、服务器、余额设置、库存历史或日志。导入的规则一律改为“只提醒”，自动创建或开机需要你之后手动设置。</div>
+    <div className="group-foot">文件只含规则和 Pro 模板，不含普通租用方案、迁移进度或保存的凭据、服务器、余额设置、库存历史或日志。导入的规则一律改为“只提醒”，自动创建或开机需要你之后手动设置。</div>
     <input ref={input} type="file" accept=".json,application/json" aria-label="导入规则模板 JSON" hidden onChange={async (event) => {
       const file = event.target.files?.[0]; event.target.value = "";
       if (!file) return;
@@ -59,14 +59,14 @@ export function ConfigurationTransfer() {
         <div className="group-label">即将导入</div>
         <Group>
           <Row icon="bell" label="提醒规则" value={`${pending.preview.rules} 条`} />
-          <Row icon="cube" label="创建模板" value={`${pending.preview.templates} 个`} />
+          <Row icon="cube" label="Pro 模板" value={`${pending.preview.templates} 个`} />
         </Group>
         <p className="group-foot">所有导入规则都会改为“只提醒”。{pending.preview.automatic_rules > 0 ? `文件里 ${pending.preview.automatic_rules} 条自动创建或开机规则也会降为只提醒。` : ""}导入后如需自动动作，请自行选择目标并手动开启。</p>
         <div className="group-label">导入方式</div>
         <Segmented full layoutId="import-mode" value={mode} onChange={setMode}
           items={[{ id: "append", label: "追加" }, { id: "replace", label: "替换" }]} />
         <p className={`group-foot ${mode === "replace" ? "err-text" : ""}`}>
-          {mode === "replace" ? "替换会删除当前全部规则和创建模板，再导入文件内容。建议先导出当前配置备份。" : "保留现有规则和模板，新增文件里的内容，模板引用会自动重新对应。"}
+          {mode === "replace" ? "替换会删除当前全部规则和Pro 模板，再导入文件内容。建议先导出当前配置备份。" : "保留现有规则和模板，新增文件里的内容，模板引用会自动重新对应。"}
         </p>
         <div className="row" style={{ marginTop: 20 }}>
           <ConfirmButton key={mode} className={`btn ${mode === "replace" ? "danger" : "primary"}`} disabled={busy} icon="check"
