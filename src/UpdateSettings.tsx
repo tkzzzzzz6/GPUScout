@@ -6,7 +6,7 @@ import { createUpdateController, updateBusy, type UpdateApi, type UpdateInfo } f
 import { Btn, ConfirmButton, FormRow, Group, Row, Sheet, Switch } from "./ui";
 import packageInfo from "../package.json";
 
-const releases = "https://github.com/tkzzzzzz6/autodl-lookout/releases";
+const releases = "https://github.com/tkzzzzzz6/GPUScout/releases";
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 let previewAutoCheck = true;
 const previewApi: UpdateApi = {
