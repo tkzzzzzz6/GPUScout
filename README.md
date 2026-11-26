@@ -126,23 +126,9 @@ npm run tauri build    # 打包安装包（Windows 是 .msi / .exe，macOS 是 .
 
 ## 代码结构
 
-```
-src-tauri/src/
-  api.rs       AutoDL 开放 API 客户端（开发者 Token）
-  market.rs    算力市场库存（网页凭证）
-  monitor.rs   轮询、规则判断、通知、自动动作、余额 / 运行时长提醒
-  heatmap.rs   抢卡时段分析（星期 × 小时聚合）
-  store.rs     SQLite（设置、规则、模板、库存历史、日志）
-  secret.rs    Token 存钥匙串
-  regions.rs   区域 / 规格 / 公共镜像对照表
-  commands.rs  前端调用的 Tauri 命令
-  tray.rs      菜单栏图标
-src/
-  pages/       库存、规则、抢卡时段、实例、模板、日志、设置
-  ui.tsx       毛玻璃列表、分段控件、开关、步进器、侧边面板、数字滚动等组件
-  icons.tsx    线条图标
-  mock.ts      浏览器预览用的假数据
-```
+前端代码在 [`src/`](./src/)，由 `main.tsx` 挂载 `App.tsx`，各功能页面在 `pages/`。桌面端 Rust 代码在 [`src-tauri/src/`](./src-tauri/src/)，`main.rs` 调用 `lib.rs` 启动应用，`commands.rs` 提供前端调用入口。
+
+详细模块职责集中维护在 [AGENTS.md 的目录说明](./AGENTS.md#目录)，新增或调整模块时更新那里。
 
 测试：`npm test`（脚本/Vitest 单测 + 前端检查与打包 + Rust 单测）、`npm run lint:rust`（Clippy）；只看界面：`npm run demo`。
 

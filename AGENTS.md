@@ -77,32 +77,56 @@ npm run version:set -- 0.2.0   # 发版前改版本号（三处一起改，见 R
 
 ```
 src-tauri/src/
+  main.rs       桌面程序入口，调用 lib.rs 启动应用
+  lib.rs        插件、Tauri 命令注册、后台任务启动与旧数据迁移
+  commands.rs   暴露给前端的 Tauri 命令和手动操作入口
   api.rs        AutoDL 官方开放 API（开发者 Token）：余额、容器实例 Pro、镜像
   market.rs     算力市场库存、余额、普通容器实例（网页登录凭证，控制台内部接口）
-  monitor.rs    后台轮询：库存 → 历史 → 规则 → 通知 / 自动动作；余额、运行时长、凭证过期提醒
-  price.rs      点开卡型时的实时价格：汇总分档，缓存 + 合并请求 + 全局限流
-  servers.rs    服务器页：AutoDL 实例 + 自己的服务器的统一视图、SSH 别名、要写进 SSH 配置的条目
-  ssh.rs        SSH 连接池（russh）：认证、执行命令、常驻命令的流式输出（stream + FrameSplitter）、主机密钥记忆、软件密钥生成和推送
-  sshconfig.rs  ~/.ssh/config 解析、软件管理段的读写、主机名 / 用户名校验
-  serverstat.rs 服务器状态：采集脚本（一次性 / 实时循环 live_command / 列表概览 overview_command）、nvidia-smi / ps / df 输出解析、空闲 / 训练结束 / 磁盘提醒判断
-  terminal.rs   打开系统终端执行 ssh（Windows Terminal / cmd、macOS 终端、Linux 终端）
-  heatmap.rs    抢卡时段：库存历史按「星期 × 小时」聚合、一句话结论
-  store.rs      SQLite：设置、规则、模板、库存历史、日志
-  secret.rs     凭证存系统钥匙串（Windows 凭据管理器 / macOS Keychain），不可用时网页凭证 / 开发者 Token 退回数据库，服务器密码不退回（直接报错）
+  monitor.rs    后台轮询、规则判断、通知、自动动作、提醒、缓存和监控轮次互斥
+  price.rs      实时价格：分档汇总、缓存、合并请求与全局限流
   regions.rs    区域、Pro 规格、公共镜像对照表
-  commands.rs   暴露给前端的 Tauri 命令
-  tray.rs       托盘图标和菜单
-  lib.rs        启动、插件、旧数据迁移
+  heatmap.rs    库存历史按星期/小时聚合，统计日期覆盖和采样日，生成时段结论
+  servers.rs    AutoDL 与自有服务器统一视图、SSH 命名、同步校验和错误状态
+  ssh.rs        SSH 连接池、认证、流式采集、主机密钥记忆、软件密钥生成与推送
+  sshconfig.rs  SSH 配置解析、静态 Include 冲突检查、管理段备份与写入、目标校验
+  serverstat.rs 服务器采集脚本、GPU/进程/磁盘解析与空闲/训练结束/磁盘提醒
+  terminal.rs   打开系统终端执行 SSH（Windows Terminal/cmd、macOS/Linux 终端）
+  store.rs      SQLite：设置、规则、模板、历史、日志、服务器及配置导入事务
+  transfer.rs   规则模板配置文件的白名单格式、版本与内容校验、受限文件读取
+  secret.rs     系统钥匙串与旧凭据迁移；服务器密码不回退到数据库
+  notify.rs     发送系统通知
+  tray.rs       托盘图标、命中数和菜单
+  updates.rs    更新能力、偏好与安装前监控暂停/恢复
+src-tauri/examples/
+  measure_history.rs  使用真实 Store 在临时库测量库存历史占用
 src/
-  App.tsx       顶栏（分段导航、状态胶囊、余额）+ 页面切换
-  ui.tsx        共用组件：毛玻璃列表 Group/Row/FormRow、Segmented、Select、Switch、Stepper、Sheet、CountUp、Toast…
-  icons.tsx     线条图标（24×24，SF Symbols 风格），和 design/ 的设计稿同源
-  api.ts        前端调用封装、类型、外部链接、卡型别名
-  hooks.ts      useGpuPrice（实时价格）、usePolled（页面开着时定时刷新）等数据 hook
-  mock.ts       浏览器预览用假数据
-  pages/        库存、提醒规则、抢卡时段、我的实例、服务器、创建模板、日志、设置
-  styles.css    设计令牌和样式（仅浅色）
-design/         设计稿 SVG（B2 风格）和应用图标源文件
+  main.tsx      React 页面挂载与全局上下文
+  App.tsx       顶栏、导航、监控/余额状态和页面切换
+  api.ts        Tauri 调用封装、类型、外链和卡型别名
+  format.ts     页面共用的纯格式化、连接命令和退避逻辑
+  hooks.ts      实时价格、轮询、服务器状态和历史曲线相关 hooks
+  ui.tsx        共用 Group/Row、Segmented、Select、Switch、Stepper、Sheet、Toast 等组件
+  icons.tsx     24×24 线条图标，与 design/ 同源
+  styles.css    浅色设计令牌、布局和组件样式
+  mock.ts       浏览器离线演示数据、错误开关和模拟操作
+  PageBoundary.tsx  页面错误隔离、日志与重试
+  autostart.ts / AutostartSettings.tsx  系统启动项状态控制与设置界面
+  updates.ts / UpdateSettings.tsx      更新检查/下载/安装控制、设置与顶栏提醒
+  ConfigurationTransfer.tsx           规则模板导出、选择文件、导入预览与确认
+  api.test.ts / format.test.ts         Node 环境的 Vitest 纯函数测试
+  vite-env.d.ts                        Vite 环境类型
+  pages/
+    Stock.tsx      库存、关注卡型、实时价格与普通实例租用
+    Rules.tsx      提醒规则与自动动作设置
+    Analysis.tsx   抢卡时段热力图
+    Instances.tsx  普通实例/Pro 实例、详情与手动操作
+    Servers.tsx    服务器、SSH 同步/连接、实时状态与提醒
+    Templates.tsx  Pro 创建模板
+    Logs.tsx       日志查看与筛选
+    Settings.tsx   凭据、区域、监控、启动项、更新与配置导入导出设置
+  assets/          应用图标与打包字体、字体许可
+scripts/           版本校验、脚本测试、更新包核验与 minisign 安装脚本
+design/            设计稿 SVG 和应用图标源文件
 ```
 
 ## 两种凭证（最重要的背景）
