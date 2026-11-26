@@ -146,8 +146,8 @@ export default function RulesPage({ snap }: { snap: Snapshot | null }) {
               <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} key={edit.action}>
                 <Group style={{ marginTop: 12 }}>
                   {edit.action === "create" ? (
-                    <FormRow icon="doc" label="创建模板">
-                      <Select label="创建模板" value={edit.template_id} onChange={(v) => set("template_id", v)} placeholder={templates.length ? "请选择" : "还没有模板"}
+                    <FormRow icon="doc" label="Pro 模板">
+                      <Select label="Pro 模板" value={edit.template_id} onChange={(v) => set("template_id", v)} placeholder={templates.length ? "请选择" : "还没有模板"}
                         options={templates.map((t) => ({ value: t.id as number | null, label: t.name }))} />
                     </FormRow>
                   ) : (

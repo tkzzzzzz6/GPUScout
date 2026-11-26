@@ -180,6 +180,7 @@ export const LINKS = {
   issues: "https://github.com/tkzzzzzz6/GPUScout/issues",
   releases: "https://github.com/tkzzzzzz6/GPUScout/releases/latest",
   devToken: "https://www.autodl.com/console/center/settings/token",
+  proConsole: "https://www.autodl.com/console/instance/pro/list",
   proDocs: "https://www.autodl.com/docs/instance_pro_api/",
   market: "https://www.autodl.com/market/list",
   console: "https://www.autodl.com/console/instance/list",

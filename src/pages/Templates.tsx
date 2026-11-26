@@ -35,7 +35,7 @@ export function ProTemplates({ hasToken }: { hasToken: boolean }) {
   return (
     <div>
       <h2 className="title">Pro 模板</h2>
-      <p className="lede">仅用于容器实例 Pro。把卡型、镜像和开机命令存起来，之后一键创建实例，或者交给提醒规则在有卡时自动创建。通过 API 创建的实例只能按量计费。</p>
+      <p className="lede">仅用于容器实例 Pro。普通实例请切换「普通实例方案」。把卡型、镜像和开机命令存起来，之后一键创建实例，或者交给提醒规则在有卡时自动创建。通过 API 创建的实例只能按量计费；自动调度不表示支持跨地区直接克隆。</p>
       <div style={{ maxWidth: 720 }}>
         {!hasToken && (
           <Group style={{ marginBottom: 16 }}>

@@ -21,6 +21,7 @@ describe("卡型名称和区域选项", () => {
 
 describe("外链", () => {
   it.each([
+    ["proConsole", "https://www.autodl.com/console/instance/pro/list"],
     ["devToken", "https://www.autodl.com/console/center/settings/token"], ["proDocs", "https://www.autodl.com/docs/instance_pro_api/"],
     ["market", "https://www.autodl.com/market/list"], ["console", "https://www.autodl.com/console/instance/list"],
     ["issues", "https://github.com/tkzzzzzz6/GPUScout/issues"], ["releases", "https://github.com/tkzzzzzz6/GPUScout/releases/latest"],

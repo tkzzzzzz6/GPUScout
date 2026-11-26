@@ -204,7 +204,7 @@ pub fn list_rules(st: State<'_, AppState>) -> R<Vec<Rule>> {
 #[tauri::command]
 pub fn save_rule(st: State<'_, AppState>, rule: Rule) -> R<i64> {
     if rule.action == "create" && rule.template_id.is_none() {
-        return Err("「自动创建实例」需要选择一个创建模板".into());
+        return Err("「自动创建实例」需要选择一个 Pro 模板".into());
     }
     if rule.action == "power_on" && rule.instance_uuid.as_deref().unwrap_or("").trim().is_empty() {
         return Err("「自动开机」需要填写实例 ID".into());
@@ -556,9 +556,10 @@ pub async fn release_instance(st: State<'_, AppState>, uuid: String) -> R<()> {
 
 #[tauri::command]
 pub async fn save_image(st: State<'_, AppState>, uuid: String, name: String) -> R<Value> {
-    let v = client(&st)?.save_image(&uuid, &name).await.map_err(s)?;
-    let _ = st.store.log(now(), "info", "manual", None, &format!("保存镜像 {name}（实例 {uuid}）"));
-    Ok(v)
+    let result = crate::images::save_pro(&st.store,&client(&st)?,&uuid,name.trim(),st.store.settings().auto_min_balance_yuan,now()).await;
+    let outcome=if result.is_ok(){"保存请求已提交，请到控制台核对进度"}else{"保存被拦下、失败或结果未知，请核对提示与控制台，未自动重试"};
+    let _ = st.store.log(now(), if result.is_ok(){"info"}else{"warn"}, "manual", None, &format!("Pro 镜像 {uuid}：{outcome}"));
+    result
 }
 
 #[tauri::command]
@@ -584,7 +585,7 @@ pub fn log_ui_error(st: State<'_, AppState>, page: String, message: String) -> R
 fn ui_error_line(page: &str, message: &str) -> String {
     const PAGES: [(&str, &str); 8] = [
         ("stock", "库存"), ("rules", "提醒规则"), ("analysis", "抢卡时段"), ("instances", "我的实例"),
-        ("servers", "服务器"), ("templates", "创建模板"), ("logs", "日志"), ("settings", "设置"),
+        ("servers", "服务器"), ("templates", "租用方案"), ("logs", "日志"), ("settings", "设置"),
     ];
     let name = PAGES.iter().find(|(id, _)| *id == page).map_or("未知页面", |(_, n)| n);
     let one_line = message.split_whitespace().collect::<Vec<_>>().join(" ");

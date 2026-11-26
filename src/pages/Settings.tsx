@@ -80,7 +80,7 @@ export default function SettingsPage({ hasToken, hasWebToken, webTokenExp }: { h
           </FormRow>
         </Group>
         <div className="group-foot">
-          只有用到容器实例 Pro 时才需要：「我的实例」「创建模板」，以及规则里的自动创建 / 自动开机。
+          只有用到容器实例 Pro 时才需要：「我的实例 → 容器实例 Pro」「租用方案 → Pro 模板」，以及规则里的自动创建 / 自动开机。
           在 AutoDL 控制台「账号 → 设置 → 开发者Token」点「新增Token」生成，账号需要完成实名认证。
         </div>
         <div className="row" style={{ marginTop: 12 }}>
