@@ -34,7 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RELEASE_MODE: ${{ inputs.signed_updates && 'signed' || 'installers' }}
+  RELEASE_MODE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.signed_updates) || (github.event_name == 'push' && vars.GPUSCOUT_SIGNED_UPDATES == 'true')) && 'signed' || 'installers' }}
   TAG: ${{ inputs.tag || github.ref_name }}
   BUILD_REF: ${{ inputs.dry_run && inputs.build_ref || inputs.tag || github.ref_name }}
 
@@ -56,9 +56,9 @@ jobs:
         run: node scripts/version.mjs check "$TAG"
       - name: 检查发布模式配置
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.signed_updates && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.signed_updates && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
-          TAURI_UPDATER_PUBLIC_KEY: ${{ inputs.signed_updates && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ env.RELEASE_MODE == 'signed' && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
         run: node scripts/updater-artifacts.mjs config "$RUNNER_TEMP/updater-config.json" "$RELEASE_MODE"
       - name: 这个版本还没发布过
         if: ${{ !inputs.dry_run }}
@@ -106,10 +106,6 @@ jobs:
             args: "--verbose"
             targets: ""
     runs-on: ${{ matrix.os }}
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.signed_updates && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.signed_updates && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
-      TAURI_UPDATER_PUBLIC_KEY: ${{ inputs.signed_updates && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -146,6 +142,10 @@ jobs:
           echo "LDAI_RUNTIME_FILE=$f" >> "$GITHUB_ENV"
       - name: 写入打包配置
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ env.RELEASE_MODE == 'signed' && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
         run: node scripts/updater-artifacts.mjs config "$RUNNER_TEMP/updater-config.json" "$RELEASE_MODE"
       - name: 打包
         shell: bash
@@ -155,6 +155,8 @@ jobs:
           fi
           npm run tauri build -- --config "$RUNNER_TEMP/updater-config.json" ${{ matrix.args }}
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           # 没有 FUSE 时让 linuxdeploy 解压后运行（只对 Linux 有用）
           APPIMAGE_EXTRACT_AND_RUN: "1"
       - name: 存下安装包
@@ -181,8 +183,6 @@ jobs:
     name: 发布 Release
     needs: [prepare, build]
     runs-on: ubuntu-latest
-    env:
-      TAURI_UPDATER_PUBLIC_KEY: ${{ inputs.signed_updates && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -206,7 +206,7 @@ jobs:
         run: |
           mkdir out
           node scripts/updater-artifacts.mjs collect dist out "$TAG"
-      - name: 生成与更新清单一致的发布说明
+      - name: 生成发布说明
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -239,6 +239,8 @@ jobs:
           gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$(git rev-parse HEAD)" --jq .body >> notes.md
       - name: 校验所有更新签名并生成清单
         if: ${{ env.RELEASE_MODE == 'signed' }}
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
         run: node scripts/updater-artifacts.mjs manifest out "$TAG" "$GITHUB_REPOSITORY" notes.md
       - name: 验证平台完整性并生成 SHA-256 校验清单
         run: node scripts/updater-artifacts.mjs checksums out "$TAG" "$RELEASE_MODE"
