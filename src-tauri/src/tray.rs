@@ -23,7 +23,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(app.default_window_icon().unwrap().clone())
-        .tooltip("AutoDL Lookout")
+        .tooltip("GPUScout")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| match ev.id().as_ref() {
@@ -48,7 +48,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 /// 托盘上显示当前命中的规则数（macOS 菜单栏会显示文字，Windows 显示在提示里）
 pub fn set_hits(app: &AppHandle, hits: usize) {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let tip = if hits > 0 { format!("AutoDL Lookout · {hits} 条规则有卡") } else { "AutoDL Lookout · 暂无可用".into() };
+        let tip = if hits > 0 { format!("GPUScout · {hits} 条规则有卡") } else { "GPUScout · 暂无可用".into() };
         let _ = tray.set_tooltip(Some(tip));
         #[cfg(target_os = "macos")]
         let _ = tray.set_title(if hits > 0 { Some(format!("{hits}")) } else { None::<String> });
