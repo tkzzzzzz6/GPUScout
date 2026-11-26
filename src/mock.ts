@@ -80,7 +80,7 @@ const snapshot = (): Snapshot => ({
     { rule_id: 3, hit: false, idle_sum: 0, machines: null, matched: [], error: null, market_url: ruleUrl(3) },
     { rule_id: 4, hit: true, idle_sum: 2, machines: 1, matched: ["RTX 5090×2"], error: null, market_url: ruleUrl(4) },
   ],
-  balance: { assets: 187.46, accumulate: 2872.54, voucher_balance: 0 }, balance_at: now() - 60,
+  balance: { assets: 187.46, accumulate: 2872.54, voucher_balance: 0 }, balance_at: now() - 60, balance_error: null,
 });
 
 let sshSynced = false;
@@ -181,6 +181,15 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       if (a) a.idle = 12 + ((tick * 7) % 13) - 6;
       const b = find("beijingDC2", "RTX 5090");
       if (b) b.idle = tick % 3 === 0 ? 2 : 0;
+      // 仅浏览器演示使用：用 ?demoApiFormatError=1 查看上游字段变化时的错误界面。
+      if (new URLSearchParams(window.location.search).get("demoApiFormatError") === "1") {
+        const error = "AutoDL 的接口格式好像变了（gpu_type.idle_gpu_num 字段缺失或类型不正确），相关数字暂时不可信。请到 GitHub 更新软件或反馈";
+        sn.last_error = error;
+        sn.regions.forEach((r) => { r.items = []; r.error = error; });
+        sn.rules.forEach((r) => { r.hit = false; r.idle_sum = 0; r.matched = []; r.error = error; });
+        sn.balance = null;
+        sn.balance_error = error.replace("gpu_type.idle_gpu_num", "wallet.assets");
+      }
       return sn;
     },
     ref_data: () => ({

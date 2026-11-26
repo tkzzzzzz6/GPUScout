@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, animate, motion, useReducedMotion, type Variants } from "motion/react";
-import { call, errText, type RefData } from "./api";
+import { call, errText, isApiFormatError, LINKS, openExternal, type RefData } from "./api";
 import { Icon, type IconName } from "./icons";
 
 export const spring = { type: "spring", stiffness: 520, damping: 38, mass: 0.9 } as const;
@@ -30,6 +30,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             exit={{ opacity: 0, y: 12, x: "-50%", scale: .98 }} transition={spring}>
             <span className="tile"><Icon name={t.err ? "x" : "check"} size={15} stroke={2.2} /></span>
             {t.msg}
+            {isApiFormatError(t.msg) && <button className="link-btn" onClick={() => openExternal(LINKS.issues)}>到 GitHub 反馈</button>}
           </motion.div>
         )}
       </AnimatePresence>

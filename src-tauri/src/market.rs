@@ -10,7 +10,7 @@
 //!
 //! 软件里的区域代码沿用 data_center（westDC3、beijingDC2 …），一个 data_center 对应多个机房。
 
-use crate::api::{parse_stock, ApiError, ApiResult, StockItem};
+use crate::api::{parse_stock, required_count, required_str, shape_error, ApiError, ApiResult, StockItem};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -98,16 +98,18 @@ impl MarketClient {
         let resp = req.send().await?;
         let status = resp.status();
         let text = resp.text().await?;
-        let v: Value = serde_json::from_str(&text).map_err(|_| {
-            ApiError::Parse(format!("HTTP {status}: {}", text.chars().take(160).collect::<String>()))
-        })?;
-        let code = v.get("code").and_then(|c| c.as_str()).unwrap_or("").to_string();
-        if code != "Success" {
+        if matches!(status.as_u16(), 401 | 403) {
+            return Err(ApiError::Api { code: format!("HTTP {status}"), msg: "网页登录凭证无效或已过期，请在「设置」里重新粘贴".into() });
+        }
+        let v: Value = serde_json::from_str(&text)
+            .map_err(|_| shape_error(&format!("{path} 响应不是 JSON（HTTP {}）", status.as_u16())))?;
+        let code = required_str(&v, "code", "响应.code")?.to_string();
+        if code != "Success" || !status.is_success() {
             let mut msg = v.get("msg").and_then(|m| m.as_str()).unwrap_or("").to_string();
             if status.as_u16() == 401 || msg.contains("登录") || code.to_lowercase().contains("auth") {
                 msg = format!("{msg}。网页登录凭证无效或已过期，请在「设置」里重新粘贴");
             }
-            return Err(ApiError::Api { code: if code.is_empty() { format!("HTTP {status}") } else { code }, msg });
+            return Err(ApiError::Api { code: if code == "Success" { format!("HTTP {status}") } else { code }, msg });
         }
         Ok(v.get("data").cloned().unwrap_or(Value::Null))
     }
@@ -115,12 +117,12 @@ impl MarketClient {
     /// 余额（控制台首页用的 /api/v1/wallet，金额单位和开放 API 一样是 元 × 1000）
     pub async fn wallet(&self) -> ApiResult<crate::api::Balance> {
         let d = self.call(reqwest::Method::GET, "/api/v1/wallet", None).await?;
-        Ok(parse_wallet(&d))
+        parse_wallet(&d)
     }
 
     pub async fn regions(&self) -> ApiResult<Vec<MarketRegion>> {
         let d = self.call(reqwest::Method::GET, "/api/v1/region/list", None).await?;
-        Ok(group_regions(&d))
+        group_regions(&d)
     }
 
     pub async fn gpu_types(&self, signs: &[String]) -> ApiResult<Vec<StockItem>> {
@@ -141,7 +143,7 @@ impl MarketClient {
                 "gpu_idle_type": "", "default_order": true, "region_sign_list": signs, "cpu_arch": [], "chip_corp": []
             });
             let d = self.call(reqwest::Method::POST, "/api/v1/user/machine/list", Some(body)).await?;
-            let (slots, max_page) = parse_machines(&d);
+            let (slots, max_page) = parse_machines(&d)?;
             out.extend(slots);
             if page >= max_page {
                 break;
@@ -160,7 +162,7 @@ impl MarketClient {
             let d = self
                 .call(reqwest::Method::POST, "/api/v1/instance", Some(json!({ "page_index": page, "page_size": 50 })))
                 .await?;
-            let list = d.get("list").and_then(|l| l.as_array()).cloned().unwrap_or_default();
+            let list = d.get("list").and_then(Value::as_array).ok_or_else(|| shape_error("instance.list"))?.clone();
             let empty = list.is_empty();
             out.extend(list);
             let max_page = d.get("max_page").and_then(|v| v.as_i64()).unwrap_or(1);
@@ -173,7 +175,7 @@ impl MarketClient {
     }
 
     pub async fn instances(&self) -> ApiResult<Vec<RegularInstance>> {
-        Ok(self.instances_raw().await?.iter().map(parse_instance).collect())
+        self.instances_raw().await?.iter().map(parse_instance).collect()
     }
 
     /// 只在用户点「复制密码」时调用
@@ -232,8 +234,10 @@ pub struct BaseImage {
     pub rank: i64,
 }
 
-pub fn parse_base_images(d: &Value) -> Vec<BaseImage> {
-    let mut v: Vec<BaseImage> = d.as_array().cloned().unwrap_or_default().iter()
+pub fn parse_base_images(d: &Value) -> ApiResult<Vec<BaseImage>> {
+    let list = d.as_array().ok_or_else(|| shape_error("image.data"))?;
+    for image in list { required_str(image, "uuid", "image.uuid")?; }
+    let mut v: Vec<BaseImage> = list.iter()
         .filter(|i| !i.get("is_off").and_then(|x| x.as_bool()).unwrap_or(false))
         .filter(|i| matches!(i.get("chip_corp").and_then(|x| x.as_str()), None | Some("nvidia") | Some("")))
         .filter(|i| !i.get("is_desktop").and_then(|x| x.as_bool()).unwrap_or(false))
@@ -252,7 +256,7 @@ pub fn parse_base_images(d: &Value) -> Vec<BaseImage> {
         .collect();
     // 和控制台一样按 rank 排（同一框架里新版本在前）
     v.sort_by(|a, b| b.rank.cmp(&a.rank));
-    v
+    Ok(v)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -308,7 +312,7 @@ pub fn price_went_up(expected_yuan: f64, actual_yuan: f64) -> bool {
 impl MarketClient {
     pub async fn base_images(&self) -> ApiResult<Vec<BaseImage>> {
         let d = self.call(reqwest::Method::POST, "/api/v1/image/get", Some(json!({}))).await?;
-        Ok(parse_base_images(&d))
+        parse_base_images(&d)
     }
 
     /// 按量计费创建一台普通实例（会扣费；调用方先过 rent_guard 和价格复核）。成功返回实例 uuid
@@ -337,15 +341,16 @@ fn service_url(v: &Value, domain_key: &str, port_key: &str, path: &str) -> Optio
     }
 }
 
-pub fn parse_instance(v: &Value) -> RegularInstance {
+pub fn parse_instance(v: &Value) -> ApiResult<RegularInstance> {
     let token = str_of(v, "jupyter_token");
-    RegularInstance {
-        uuid: str_of(v, "uuid"),
-        name: str_of(v, "name"),
-        status: str_of(v, "status"),
+    let name = v.get("name").and_then(Value::as_str).ok_or_else(|| shape_error("instance.name"))?;
+    Ok(RegularInstance {
+        uuid: required_str(v, "uuid", "instance.uuid")?.into(),
+        name: name.into(),
+        status: required_str(v, "status", "instance.status")?.into(),
         sub_status: str_of(v, "sub_status"),
         gpu: str_of(v, "snapshot_gpu_alias_name"),
-        gpu_amount: v.get("req_gpu_amount").and_then(|x| x.as_i64()).unwrap_or(0),
+        gpu_amount: required_count(v, "req_gpu_amount", "instance.req_gpu_amount")?,
         region_name: str_of(v, "region_name"),
         region_sign: str_of(v, "region_sign"),
         machine_alias: str_of(v, "machine_alias"),
@@ -359,12 +364,13 @@ pub fn parse_instance(v: &Value) -> RegularInstance {
         stopped_at: crate::monitor::parse_time_field(v.get("stopped_at")),
         expired_at: crate::monitor::parse_time_field(v.get("expired_at")),
         has_password: !str_of(v, "root_password").is_empty(),
-    }
+    })
 }
 
-pub fn parse_wallet(d: &Value) -> crate::api::Balance {
+pub fn parse_wallet(d: &Value) -> ApiResult<crate::api::Balance> {
+    let assets = d.get("assets").and_then(Value::as_f64).ok_or_else(|| shape_error("wallet.assets"))? / 1000.0;
     let f = |k: &str| d.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0) / 1000.0;
-    crate::api::Balance { assets: f("assets"), accumulate: f("accumulate"), voucher_balance: f("voucher_balance") }
+    Ok(crate::api::Balance { assets, accumulate: f("accumulate"), voucher_balance: f("voucher_balance") })
 }
 
 /// 算力市场页面链接。页面只支持通过 `?region=<机房>` 预选区域（选中该机房所在的大区），卡型没法预选。
@@ -375,17 +381,18 @@ pub fn market_url(signs: &[String]) -> String {
     }
 }
 
-pub fn group_regions(d: &Value) -> Vec<MarketRegion> {
+pub fn group_regions(d: &Value) -> ApiResult<Vec<MarketRegion>> {
     let mut map: BTreeMap<String, MarketRegion> = BTreeMap::new();
-    for r in d.as_array().cloned().unwrap_or_default() {
-        let (Some(sign), Some(dc)) = (r.get("region_sign").and_then(|v| v.as_str()), r.get("data_center").and_then(|v| v.as_str())) else { continue };
+    for r in d.as_array().ok_or_else(|| shape_error("region.data"))? {
+        let sign = required_str(r, "region_sign", "region.region_sign")?;
+        let dc = required_str(r, "data_center", "region.data_center")?;
         let name = r.get("region_name").and_then(|v| v.as_str()).unwrap_or(dc);
         let e = map.entry(dc.to_string()).or_insert_with(|| MarketRegion { data_center: dc.into(), name: name.into(), signs: vec![] });
         if !e.signs.iter().any(|s| s == sign) {
             e.signs.push(sign.to_string());
         }
     }
-    map.into_values().collect()
+    Ok(map.into_values().collect())
 }
 
 pub fn parse_cuda(s: &str) -> Option<i64> {
@@ -412,9 +419,13 @@ pub fn machine_rentable(m: &Value) -> bool {
     }
 }
 
-pub fn parse_machines(d: &Value) -> (Vec<MachineSlot>, i64) {
+pub fn parse_machines(d: &Value) -> ApiResult<(Vec<MachineSlot>, i64)> {
     let max_page = d.get("max_page").and_then(|v| v.as_i64()).unwrap_or(1);
-    let list = d.get("list").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let list = d.get("list").and_then(Value::as_array).ok_or_else(|| shape_error("machine.list"))?;
+    for machine in list {
+        required_str(machine, "gpu_name", "machine.gpu_name")?;
+        required_count(machine, "gpu_idle_num", "machine.gpu_idle_num")?;
+    }
     let slots = list
         .iter()
         .filter(|m| m.get("payg").and_then(|v| v.as_bool()).unwrap_or(true))
@@ -429,7 +440,7 @@ pub fn parse_machines(d: &Value) -> (Vec<MachineSlot>, i64) {
             max_cuda: m.get("highest_cuda_version").and_then(|v| v.as_str()).and_then(parse_cuda),
         })
         .collect();
-    (slots, max_page)
+    Ok((slots, max_page))
 }
 
 /// 按单价 / CUDA / 单机空闲卡数过滤后，把机器上的空闲卡按卡型加起来，并记下满足条件的机器台数。
@@ -499,6 +510,60 @@ mod tests {
     use super::*;
 
     #[test]
+    fn changed_critical_fields_are_not_empty_lists_or_zero_balance() {
+        for value in [json!({}), json!({"balance":0}), json!({"assets":"0"})] {
+            assert!(matches!(parse_wallet(&value), Err(ApiError::Shape(_))));
+        }
+        assert_eq!(parse_wallet(&json!({"assets":0})).unwrap().assets, 0.0);
+        for value in [json!({}), json!({"list":{}}), json!({"list":[{"gpu_name":"A100","idle":2}]}), json!({"list":[{"gpu_idle_num":0}]})] {
+            assert!(matches!(parse_machines(&value), Err(ApiError::Shape(_))));
+        }
+        assert!(parse_machines(&json!({"list":[]})).unwrap().0.is_empty());
+        let original: Value = serde_json::from_str(INSTANCE).unwrap();
+        for field in ["uuid", "name", "status", "req_gpu_amount"] {
+            let mut changed = original.clone();
+            changed.as_object_mut().unwrap().remove(field);
+            let error = parse_instance(&changed).unwrap_err().to_string();
+            assert!(crate::api::is_format_error(&error) && error.contains(field));
+            assert!(!error.contains("fake-password") && !error.contains("jt"));
+        }
+        assert!(matches!(parse_base_images(&json!([{"image_uuid":"renamed"}])), Err(ApiError::Shape(_))));
+        assert!(parse_base_images(&json!([])).unwrap().is_empty());
+        assert!(matches!(group_regions(&json!([{"region_sign":"west-B"}])), Err(ApiError::Shape(_))));
+    }
+
+    #[tokio::test]
+    async fn malformed_http_responses_are_actionable_and_do_not_echo_response_bodies() {
+        for body in ["<html>fake-secret</html>", r#"{"code":"Success","data":{"balance":0,"token":"fake-secret"}}"#,
+            r#"{"code":"Success","data":null}"#, r#"{"data":{"assets":0}}"#] {
+            let (base, request) = serve_once(body).await;
+            let error = MarketClient::with_base("fake.jwt", base).wallet().await.unwrap_err().to_string();
+            assert!(crate::api::is_format_error(&error) && error.contains("GitHub"));
+            assert!(!error.contains("fake-secret") && !error.contains("fake.jwt"));
+            let raw = request.await.unwrap();
+            assert!(raw.starts_with("GET /api/v1/wallet ") && raw.to_lowercase().contains("authorization: fake.jwt"));
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_instance_envelope_is_not_an_empty_success() {
+        let (base, request) = serve_once(r#"{"code":"Success","data":{"items":[]}}"#).await;
+        assert!(matches!(MarketClient::with_base("fake.jwt", base).instances().await, Err(ApiError::Shape(_))));
+        assert!(request.await.unwrap().starts_with("POST /api/v1/instance "));
+    }
+
+    #[tokio::test]
+    async fn http_failures_are_not_successful_balances_or_schema_errors() {
+        for (status, body) in [(401, "<html>fake-secret</html>"), (403, "{}"), (503, r#"{"code":"Success","data":{"assets":100000}}"#)] {
+            let (base, request) = serve_once_status(body, status).await;
+            let error = MarketClient::with_base("fake.jwt", base).wallet().await.unwrap_err();
+            assert!(matches!(error, ApiError::Api { .. }));
+            assert!(!error.to_string().contains("fake-secret"));
+            request.await.unwrap();
+        }
+    }
+
+    #[test]
     fn market_url_preselects_first_sign() {
         assert_eq!(market_url(&["west-B".into(), "west-C".into()]), "https://www.autodl.com/market/list?region=west-B");
         assert_eq!(market_url(&[]), "https://www.autodl.com/market/list");
@@ -513,7 +578,7 @@ mod tests {
             {"region_sign": "west-C", "region_name": "西北B区", "data_center": "westDC3"},
             {"region_sign": "bj-B2", "region_name": "北京B区", "data_center": "beijingDC2"},
         ]);
-        let g = group_regions(&d);
+        let g = group_regions(&d).unwrap();
         assert_eq!(g.len(), 2);
         let west = g.iter().find(|r| r.data_center == "westDC3").unwrap();
         assert_eq!(west.signs, vec!["west-B", "west-C"]);
@@ -523,7 +588,7 @@ mod tests {
     #[test]
     fn wallet_amounts_in_yuan() {
         // 与 2026-11-06 /api/v1/wallet 实际字段同形
-        let b = parse_wallet(&json!({"assets": 187460, "accumulate": 2872540, "voucher_balance": 0, "blocked_asset": 0, "uid": 1}));
+        let b = parse_wallet(&json!({"assets": 187460, "accumulate": 2872540, "voucher_balance": 0, "blocked_asset": 0, "uid": 1})).unwrap();
         assert!((b.assets - 187.46).abs() < 1e-9);
         assert!((b.accumulate - 2872.54).abs() < 1e-9);
     }
@@ -545,7 +610,7 @@ mod tests {
             {"gpu_name": "RTX 4090", "gpu_idle_num": 0, "payg_price": 1000, "highest_cuda_version": "13.2", "payg": true},
             {"gpu_name": "RTX 4090", "gpu_idle_num": 5, "payg_price": 900, "highest_cuda_version": "13.2", "payg": false}
         ]});
-        let (slots, mp) = parse_machines(&d);
+        let (slots, mp) = parse_machines(&d).unwrap();
         assert_eq!(mp, 1);
         assert_eq!(slots.len(), 4, "non-payg machines are skipped");
         let all = sum_filtered(&slots, None, None, 1);
@@ -568,7 +633,7 @@ mod tests {
             {"uuid": "base-image-off", "framework_name": "PyTorch", "framework_version": "1.5.1", "python_version": "3.8", "cuda_version": "10.1", "is_off": true, "rank": 1},
             {"uuid": "base-image-desk", "framework_name": "Desktop", "framework_version": "1", "python_version": "3.8", "cuda_version": "11.8", "is_off": false, "is_desktop": true, "rank": 99999999}
         ]);
-        let v = parse_base_images(&d);
+        let v = parse_base_images(&d).unwrap();
         assert_eq!(v.iter().map(|i| i.uuid.as_str()).collect::<Vec<_>>(), vec!["base-image-new", "base-image-db8346e037"]);
         assert_eq!(v[0].label, "PyTorch 2.5.1 · Python 3.12(ubuntu22.04) · CUDA 12.4");
         assert_eq!(v[0].cuda, Some(124));
@@ -625,7 +690,7 @@ mod tests {
             m(0, 2, 150, 147),
             m(2, 2, 150, 140)                          // 真能租的
         ]});
-        let (slots, _) = parse_machines(&d);
+        let (slots, _) = parse_machines(&d).unwrap();
         assert_eq!(slots.len(), 2);
         let sum = sum_filtered(&slots, None, None, 1);
         assert_eq!((sum[0].idle, sum[0].machines), (2, Some(1)));
@@ -663,6 +728,10 @@ mod tests {
     }
 
     async fn serve_once(reply: &'static str) -> (String, tokio::task::JoinHandle<String>) {
+        serve_once_status(reply, 200).await
+    }
+
+    async fn serve_once_status(reply: &'static str, status: u16) -> (String, tokio::task::JoinHandle<String>) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = format!("http://{}", l.local_addr().unwrap());
@@ -679,7 +748,7 @@ mod tests {
                 }
                 if n == 0 { break; }
             }
-            let resp = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply);
+            let resp = format!("HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply);
             s.write_all(resp.as_bytes()).await.unwrap();
             req
         });
@@ -704,7 +773,7 @@ mod tests {
     #[test]
     fn parses_regular_instance_without_password() {
         let v: Value = serde_json::from_str(INSTANCE).unwrap();
-        let i = parse_instance(&v);
+        let i = parse_instance(&v).unwrap();
         assert_eq!((i.gpu.as_str(), i.gpu_amount, i.region_sign.as_str()), ("RTX 4090", 2, "west-B"));
         assert_eq!(i.payg_price_yuan, Some(3.76));
         assert_eq!(i.jupyter_url.as_deref(), Some("https://j-abc.example/jupyter?token=jt"));
@@ -734,8 +803,8 @@ mod tests {
     #[test]
     fn jupyter_via_proxy_port() {
         let v = json!({ "jupyter_token": "t", "jupyter_domain": "", "jupyter_port": 8888, "proxy_host": "h.example" });
-        assert_eq!(parse_instance(&v).jupyter_url.as_deref(), Some("http://h.example:8888/jupyter?token=t"));
-        assert_eq!(parse_instance(&json!({})).jupyter_url, None);
+        assert_eq!(service_url(&v, "jupyter_domain", "jupyter_port", "/jupyter?token=t").as_deref(), Some("http://h.example:8888/jupyter?token=t"));
+        assert_eq!(service_url(&json!({}), "jupyter_domain", "jupyter_port", ""), None);
     }
 
     #[tokio::test]
