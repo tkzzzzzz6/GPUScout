@@ -28,6 +28,7 @@
 ```bash
 npm test          # 脚本测试 + Vitest 纯函数测试 + npm run build（tsc + vite build）+ cargo test
 npm run lint:rust # cargo clippy --all-targets -- -D warnings
+npm audit --audit-level=high # 依赖审计，阻止带高危或严重问题的依赖合入
 ```
 
 `cargo` 和 Clippy 不能有新的 warning；CI 两个平台都运行 `npm run lint:rust`，本地缺少组件时先运行 `rustup component add clippy`。这些检查与 CI（`.github/workflows/ci.yml`，Windows 和 Ubuntu 各跑一遍）一致。改了界面时，用离线演示模式（`npm run demo`）实际操作一遍，截图放进 PR。
@@ -58,6 +59,8 @@ npm run lint:rust # cargo clippy --all-targets -- -D warnings
 - 界面语言：简体中文
 
 ## 常用命令
+
+前端开发与测试需要 Node.js 22 LTS（22.12+）或 24 LTS，建议使用 24 LTS；版本兼容范围以 `package.json` 的 `engines` 为准。CI 同时检查 npm 依赖审计，新增测试工具时也要验证其依赖。
 
 ```bash
 npm install            # 安装前端依赖
