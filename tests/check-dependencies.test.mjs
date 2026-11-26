@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,4 +80,16 @@ test("npm 开发钩子在缺包时退出，安装完整后才能启动", { skip:
   assert(!missing.stdout.includes("DEVELOPMENT_STARTED"));
   install(root, updater, "2.14.1"); install(root, processPlugin, "2.4.0");
   const ready = run(); assert.equal(ready.status, 0, ready.stderr); assert.match(ready.stdout, /DEVELOPMENT_STARTED/);
+});
+
+test("通过目录链接运行脚本时仍会检查缺失依赖", (t) => {
+  const root = fixture(t), alias = `${root}-linked`, scripts = join(root, "scripts");
+  mkdirSync(scripts);
+  copyFileSync(fileURLToPath(new URL("../scripts/check-dependencies.mjs", import.meta.url)), join(scripts, "check-dependencies.mjs"));
+  symlinkSync(root, alias, process.platform === "win32" ? "junction" : "dir");
+  t.after(() => rmSync(alias, { recursive:true, force:true }));
+  const result = spawnSync(process.execPath, [join(alias, "scripts/check-dependencies.mjs")], { encoding:"utf8" });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /npm ci/);
+  assert(result.stderr.includes(updater) && result.stderr.includes(processPlugin));
 });

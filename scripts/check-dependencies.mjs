@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,7 +38,8 @@ export function dependencyProblems(root = project) {
   return problems;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Windows 短路径和目录链接可能与模块 URL 的路径不同，比较实际路径才能可靠执行检查。
+if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) {
   const problems = dependencyProblems();
   if (problems.length) {
     console.error("前端依赖尚未同步。git pull 不会安装 npm 依赖。\n请先停止开发进程，在项目根目录运行 npm ci，再重试原命令。\n");
