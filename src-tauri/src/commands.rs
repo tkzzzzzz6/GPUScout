@@ -387,6 +387,34 @@ pub async fn rent_instance(
     }
 }
 
+#[tauri::command]
+pub async fn regular_clone_source(st:State<'_,AppState>,uuid:String,force:Option<bool>)->R<crate::reuse::CloneSource>{
+    let epoch=st.monitor.image_catalog_cache.epoch();let m=market(&st)?;
+    st.monitor.reuse_cache.get(&m,&uuid,epoch,&st.monitor.image_catalog_cache,force.unwrap_or(false)).await
+}
+#[derive(Serialize)]
+#[serde(tag="status",rename_all="snake_case")]
+pub enum CloneResult {Created{instance_uuid:String}, PriceChanged{old_yuan:f64,new_yuan:f64},Unknown{message:String}}
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn clone_regular_instance(st:State<'_,AppState>,uuid:String,region:String,gpu:String,machine_id:String,gpu_amount:i64,copy_data:bool,expected_price:f64,max_hourly:Option<f64>)->R<CloneResult>{
+    let epoch=st.monitor.image_catalog_cache.epoch();let m=market(&st)?;
+    let src=st.monitor.reuse_cache.get(&m,&uuid,epoch,&st.monitor.image_catalog_cache,true).await?;
+    crate::market::rent_guard(m.wallet().await.map(|b|b.assets).map_err(s),st.store.settings().auto_min_balance_yuan)?;
+    let regions=m.regions().await.map_err(s)?;let signs=st.monitor.signs_of(&m,&region).await?;
+    let slots=m.machines(&signs,std::slice::from_ref(&gpu)).await.map_err(s)?;
+    let slot=slots.iter().find(|s|s.machine_id==machine_id && s.gpu_name==gpu).ok_or("目标主机已不可租，请刷新")?;
+    let price=crate::reuse::guard(&src,&region,&regions,slot,gpu_amount)?;crate::rental_plans::budget(max_hourly,price,gpu_amount)?;
+    if !expected_price.is_finite()||expected_price<=0.0{return Err("确认价格无效".into());}
+    if crate::market::price_went_up(expected_price,price){return Ok(CloneResult::PriceChanged{old_yuan:expected_price,new_yuan:price});}
+    if epoch!=st.monitor.image_catalog_cache.epoch(){return Err("账号已变化，请重新确认".into());}
+    crate::reuse::claim(&st.store,&uuid,now())?;
+    let result=m.clone_payg(&src,slot,gpu_amount,copy_data).await;
+    let msg=match &result{Ok(id)=>format!("同地区克隆 {uuid} → {id}，数据盘复制={copy_data}，GPU 合计 ¥{:.2}/时",price*gpu_amount as f64),Err(_)=>format!("克隆 {uuid} 结果未知，请到控制台核对；未自动重试")};
+    let _=st.store.log(now(),if result.is_ok(){"info"}else{"warn"},"manual",None,&msg);st.monitor.invalidate_instances().await;
+    Ok(match result{Ok(instance_uuid)=>CloneResult::Created{instance_uuid},Err(_)=>CloneResult::Unknown{message:"请求已发出但无法确认结果，请到 AutoDL 控制台核对订单与实例，不要重复提交".into()}})
+}
+
 // ---------- 普通容器实例（网页登录凭证） ----------
 
 #[tauri::command]

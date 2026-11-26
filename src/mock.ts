@@ -271,6 +271,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return r.id;
     },
     delete_rule: () => { rules = rules.filter((r) => r.id !== a.id); },
+    regular_clone_source:()=>{const i=regular.find(i=>i.uuid===a.uuid);if(!i||i.status!=="shutdown")throw "请先手动关机";return {uuid:i.uuid,name:i.name,region:"beijingDC2",region_name:i.region_name,gpu:i.gpu,cpu_arch:"x86",cuda:118,expand_bytes:10*1024**3};},
+    clone_regular_instance:()=>{if(new URLSearchParams(location.search).has("demoCloneUnknown"))return {status:"unknown",message:"请求已发出但无法确认结果，请到 AutoDL 控制台核对订单与实例，不要重复提交"};if(Number(a.expectedPrice)<1.6)return {status:"price_changed",old_yuan:a.expectedPrice,new_yuan:1.6};return {status:"created",instance_uuid:"clone-demo-instance"};},
     list_rental_plans:()=>rentalPlans,
     save_rental_plan:()=>{const p={...(a.plan as import("./api").RentalPlan)};if(!p.id)p.id=nextPlanId++;rentalPlans=[...rentalPlans.filter(x=>x.id!==p.id),p];return p.id;},
     delete_rental_plan:()=>{rentalPlans=rentalPlans.filter(p=>p.id!==a.id);},

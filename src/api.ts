@@ -192,3 +192,5 @@ export function openExternal(url: string) {
 }
 
 export interface RentalPlan { id:number; name:string; image_uuid:string; image_source:ImageSource; gpu_amount:number; max_hourly:number|null; region:string|null; gpu:string|null }
+
+export interface CloneSource {uuid:string;name:string;region:string;region_name:string;gpu:string;cpu_arch:string;cuda:number|null;expand_bytes:number}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { LINKS, call, openExternal, timeFieldTs, type Instance, type InstancePage, type RegularInstance } from "../api";
 import { Icon } from "../icons";
+import { CloneInstance } from "../CloneInstance";
 import { SaveRegularImage } from "../SaveRegularImage";
 import { ImageLibrary } from "../ImageLibrary";
 import { nextDelay, hoursSince } from "../format";
@@ -167,6 +168,7 @@ function RegularDetail({ inst, onChanged }: { inst: RegularInstance; onChanged: 
         <Row icon="yen" label="计费" value={inst.charge_type === "payg" ? (price ?? "按量计费") : inst.charge_type || "—"} />
         {inst.expired_at && <Row icon="calendar" label="到期" value={new Date(inst.expired_at * 1000).toLocaleString("zh-CN", { hour12: false })} />}
       </Group>
+      <CloneInstance uuid={inst.uuid} status={inst.status} />
       <SaveRegularImage key={inst.uuid} uuid={inst.uuid} status={inst.status} />
       <div className="row" style={{ marginTop: 14, justifyContent: "flex-end" }}>
         <Btn small icon="external" onClick={() => open(LINKS.console)}>在控制台打开</Btn>
