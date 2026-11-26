@@ -27,7 +27,7 @@ Linux 需要桌面环境有系统托盘（GNOME 要装 AppIndicator 扩展）和
 
 ## 运行
 
-需要：Rust（`rustup`）、Node 18+。
+需要：Rust（`rustup`）、Node.js 22 LTS（22.12+）或 24 LTS，建议使用 24 LTS；兼容范围见 `package.json` 的 `engines`。
 - Windows：还需要 Visual Studio Build Tools 里的「使用 C++ 的桌面开发」，以及 WebView2（Win10/11 一般自带）
 - macOS：还需要 Xcode Command Line Tools（`xcode-select --install`）
 

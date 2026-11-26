@@ -9,7 +9,7 @@
 1. **先开 issue**：用 [工作项](./.github/ISSUE_TEMPLATE/task.yml) 或 [缺陷报告](./.github/ISSUE_TEMPLATE/bug.yml) 模板，写明背景、工作范围、验收标准和不做的内容。等维护者确认后再动手。
 2. **拉分支**：从最新的 `origin/main` 拉，一个 issue 一个分支、一个 PR。人工分支用 `feat/<issue 编号>-<描述>`、`fix/<issue 编号>-<描述>`；AI 编码助手用 `<agent>/<issue 编号>-<描述>`，例如 `claude/3-webhook-notify`。
 3. **实现**：只做 issue 范围内的事；顺手发现的问题另开 issue。不要批量格式化、不要改换行符（统一 LF，见 `.gitattributes`）。新功能和缺陷修复都要有测试。
-4. **自查**：在仓库根目录运行 `npm test`（脚本测试 + Vitest 纯函数测试 + 前端构建 + Rust 测试）和 `npm run lint:rust`，全部通过且没有新 warning。改了界面就用 `npm run demo` 操作一遍并截图。
+4. **自查**：在仓库根目录运行 `npm test`（脚本测试 + Vitest 纯函数测试 + 前端构建 + Rust 测试）、`npm run lint:rust` 和 `npm audit --audit-level=high`，全部通过且没有新 warning。改了界面就用 `npm run demo` 操作一遍并截图。
 5. **开 PR**：按 [PR 模板](./.github/pull_request_template.md) 填写关联 issue、改了什么和为什么、验证（已验证 / 需要在本地确认）、边界，并打 label。
 6. **审阅**：在同一个分支上继续提交修改，逐条回复意见。和 `main` 冲突时由提交方变基解决，只在自己的分支上 `git push --force-with-lease`。合并由维护者决定。
 
@@ -18,7 +18,7 @@
 需要：
 
 - [Rust](https://rustup.rs)（stable）
-- Node.js 18+
+- Node.js 22 LTS（22.12+）或 24 LTS，建议使用 24 LTS；兼容范围见 `package.json` 的 `engines`
 - Windows：Visual Studio Build Tools 里的「使用 C++ 的桌面开发」，以及 WebView2（Win10/11 一般自带）
 - macOS：Xcode Command Line Tools（`xcode-select --install`）
 
@@ -32,9 +32,10 @@ npm test              # 提交前必跑（含 Vitest 纯函数测试）
 npm run test:unit      # 只跑前端单测
 rustup component add clippy
 npm run lint:rust     # 和 CI 一样检查所有 Rust 目标
+npm audit --audit-level=high  # 检查依赖中的高危和严重级别问题
 ```
 
-前端纯函数测试放在 `src/**/*.test.ts`，使用 Node 环境，不引入 DOM 测试库；界面仍通过离线演示验证。CI 在 Windows 和 Ubuntu 上都执行 `npm test` 和 Clippy，不运行会导致全仓库格式化的 `cargo fmt --check`。
+前端纯函数测试放在 `src/**/*.test.ts`，使用 Node 环境，不引入 DOM 测试库；界面仍通过离线演示验证。CI 在 Windows 和 Ubuntu 上都执行 npm 依赖审计、`npm test` 和 Clippy，不运行会导致全仓库格式化的 `cargo fmt --check`。
 
 ## 提交信息
 
