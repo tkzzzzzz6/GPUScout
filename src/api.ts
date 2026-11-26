@@ -194,3 +194,6 @@ export function openExternal(url: string) {
 export interface RentalPlan { id:number; name:string; image_uuid:string; image_source:ImageSource; gpu_amount:number; max_hourly:number|null; region:string|null; gpu:string|null }
 
 export interface CloneSource {uuid:string;name:string;region:string;region_name:string;gpu:string;cpu_arch:string;cuda:number|null;expand_bytes:number}
+
+export interface Migration {source_uuid:string;source_region:string;target_region:string|null;image_uuid:string|null;pending:boolean;target_uuid:string|null;verified:boolean}
+export interface MigrationInfo {source:{uuid:string;name:string;status:string;region:string;region_name:string;gpu:string};regions:{data_center:string;name:string;signs:string[]}[];state:Migration}

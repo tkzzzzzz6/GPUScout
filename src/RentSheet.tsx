@@ -7,8 +7,8 @@ import {planProblem,budgetProblem} from "./rental-plans";
 import { IMAGE_SOURCE, imageProblem, sameImage } from "./rental-images";
 import { Btn, ConfirmButton, FormRow, Group, Row, Sheet, Stepper, Select, useAction, useToast } from "./ui";
 
-export function RentSheet({ open, onClose, region, regionName, gpu, offers, onRented }: {
-  open:boolean; onClose:()=>void; region:string; regionName:string; gpu:string; offers:Offer[]; onRented:()=>void;
+export function RentSheet({ open, onClose, region, regionName, gpu, offers, onRented, migrationUuid }: {
+  open:boolean; onClose:()=>void; region:string; regionName:string; gpu:string; offers:Offer[]; onRented:()=>void; migrationUuid?:string;
 }) {
   const selection = useRentalSelection();
   const [image,setImage] = useState<ImageRef | null>(selection.image);
@@ -35,11 +35,12 @@ export function RentSheet({ open, onClose, region, regionName, gpu, offers, onRe
   const rent=async()=>{
     if(!machine || !selected || problem || preferenceProblem || overBudget)return;
     const result=await run(()=>call<RentResult>("rent_instance",{region,gpu,machineId:machine.machine_id,gpuAmount:n,
-      imageUuid:selected.uuid,imageSource:selected.source,expectedPrice:price,acceptPrice:false,maxHourly:budget.trim()?Number(budget):null}));
+      imageUuid:selected.uuid,imageSource:selected.source,expectedPrice:price,acceptPrice:false,maxHourly:budget.trim()?Number(budget):null,migrationUuid:migrationUuid??null}));
     if(!result)return;
     if(result.status==="price_changed"){setChanged(result);return;}
     try{await call("save_recent_rental",{plan:config()});}catch{toast("下单成功，但最近配置保存失败，请勿重复下单");}
-    toast("已下单，实例正在开机，到「我的实例」或「服务器」查看");onRented();onClose();
+    if(migrationUuid)toast(`目标实例已创建：${result.instance_uuid}，回迁移向导处理数据盘`);
+    else toast("已下单，实例正在开机，到「我的实例」或「服务器」查看");onRented();onClose();
   };
   return <Sheet open={open} onClose={onClose} title={`租用 ${gpu}`} left={<span />} right={<button className="link-btn bold" disabled={busy} onClick={onClose}>取消</button>}>
     <p className="group-foot">{regionName}，按量计费。下单前会重新核对主机、镜像和价格。付费扩容盘等存储费用可能在关机后继续产生。</p>

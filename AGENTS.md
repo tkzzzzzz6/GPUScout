@@ -85,6 +85,7 @@ src-tauri/src/
   commands.rs   暴露给前端的 Tauri 命令和手动操作入口
   api.rs        AutoDL 官方开放 API（开发者 Token）：余额、容器实例 Pro、镜像
   market.rs     算力市场库存、余额、普通容器实例（网页登录凭证，控制台内部接口）
+  migration.rs  跨地区迁移进度、订单待核对保护与恢复验证
   reuse.rs      普通同地区克隆的源配置、地区与兼容性校验、复制范围与间隔保护
   rental_plans.rs 普通租用方案白名单与整机预算校验
   images.rs     普通镜像来源、保存与下单校验，账号隔离的查询缓存与限流
