@@ -187,7 +187,7 @@ jobs:
           sudo apt-get install -y cmake libsodium-dev
           bash scripts/install-minisign.sh "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: bundle-*
           path: dist
