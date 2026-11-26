@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { LIVE_KEEP, usePolled, useNowSec, useServerStatus } from "../hooks";
 import { AnimatePresence, motion } from "motion/react";
-import { HOSTKEY_CHANGED, call, setSetting, type HostEntry, type Overview, type Probe, type ServerList, type ServerRecord, type ServerView, type Settings, type Watch } from "../api";
+import { HOSTKEY_CHANGED, LINKS, call, openExternal, setSetting, type HostEntry, type Overview, type Probe, type ServerList, type ServerRecord, type ServerView, type Settings, type Watch } from "../api";
 import { Icon } from "../icons";
 import { Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
 
@@ -261,7 +261,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
       <Group>
         <Row icon="terminal" label="SSH 命令" sub={<span className="kv-code">{noSsh ? "—" : sshCmd(v)}</span>}
           right={<Btn small icon="copy" disabled={noSsh} onClick={async () => { await copy(sshCmd(v)); toast("已复制 SSH 命令"); }}>复制</Btn>} />
-        <Row icon="doc" label="SSH 配置里的名字" sub={<span className="kv-code">{v.alias}</span>}
+        <Row icon="doc" label="SSH 配置里的名字" sub={<span className="kv-code">{v.alias || "先在 AutoDL 设置实例名称"}</span>}
           right={<span className={`capsule ${v.alias_ready ? "on" : ""}`}>{v.alias_ready ? "已同步" : "未同步"}</span>} />
         {v.has_password && (
           <Row icon="key" label={v.kind === "autodl" ? "root 密码" : "密码"} right={<Btn small icon="copy" disabled={busy}
@@ -404,9 +404,9 @@ export default function ServersPage() {
   };
   const ov = usePolled<Record<string, Overview>>("overview", () => call<Record<string, Overview>>("servers_overview"), !!prefs?.server_overview && !!list, 10_000);
 
-  const load = () => {
+  const load = (force = false) => {
     setLoading(true);
-    return call<ServerList>("list_servers").then((l) => { setList(l); setErr(null); if (l.synced) toast("AutoDL 实例的 SSH 信息有变化，已同步到 SSH 配置"); })
+    return call<ServerList>("list_servers", { force }).then((l) => { setList(l); setErr(null); if (l.synced) toast("AutoDL 实例的 SSH 信息有变化，已同步到 SSH 配置"); })
       .catch((e) => setErr(errText(e))).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -421,7 +421,8 @@ export default function ServersPage() {
 
   const sync = async () => {
     const r = await run(() => call<{ changed: boolean; count: number; path: string }>("sync_ssh_config"));
-    if (r) { toast(r.changed ? `已把 ${r.count} 台服务器写进 SSH 配置` : "SSH 配置已经是最新的"); load(); }
+    if (r) toast(r.changed ? `已把 ${r.count} 台服务器写进 SSH 配置` : "SSH 配置已经是最新的");
+    await load();
   };
   const editRecord = (v: ServerView): ServerRecord => ({
     id: Number(v.id.slice(4)), name: v.name, host: v.host, port: v.port, user: v.user, auth: v.auth, key_path: v.key_path,
@@ -467,10 +468,27 @@ export default function ServersPage() {
               onChange={async (on) => { await run(() => call("set_ssh_auto_sync", { on }), on ? "AutoDL 实例端口变了会自动更新 SSH 配置" : undefined); load(); }} />
           </span>
         )}
-        <Btn small icon="refresh" spinning={loading} onClick={load}>刷新</Btn>
+        <Btn small icon="refresh" disabled={loading || busy} spinning={loading} onClick={() => { void load(true); }}>刷新</Btn>
       </div>
 
       {err && <Group style={{ marginBottom: 16 }}><div className="group-row err-text">{err}</div></Group>}
+      {list?.ssh_sync_error && (
+        <Group style={{ marginBottom: 20 }}>
+          <div className="group-row" role="alert"><div>
+            <b>SSH 配置尚未同步</b>
+            <p className="err-text">{list.ssh_sync_error}</p>
+            {list.ssh_name_error && <>
+              <ol className="group-foot">
+                <li>打开 AutoDL 控制台，在“容器实例”中找到上面提示的实例，修改名称。</li>
+                <li>每个名称保持唯一。可用中文、字母、数字、点、横线或下划线，不含空格，不以横线开头，最多 64 个字符。</li>
+                <li>改名后回到这里点“刷新”，再点“同步到 SSH 配置”。</li>
+              </ol>
+              <Btn small icon="external" onClick={() => openExternal(LINKS.console)}>打开 AutoDL 控制台改名</Btn>
+            </>}
+            <Btn small icon="refresh" disabled={busy || loading} onClick={sync}>重新同步</Btn>
+          </div></div>
+        </Group>
+      )}
 
       <div className="servers-grid">
         <div>
@@ -504,7 +522,7 @@ export default function ServersPage() {
         )}
       </Group>
       <p className="footnote">
-        同步只改 SSH 配置（{list?.ssh_config_path ?? "~/.ssh/config"}）里「autodl-lookout」标记的一段，改之前会备份成 config.autodl-lookout.bak；你自己写的配置不会动。
+        AutoDL 的 SSH 名称与控制台实例名一致，改名后请刷新并重新同步。同步只改 SSH 配置（{list?.ssh_config_path ?? "~/.ssh/config"}）里「autodl-lookout」标记的一段，改之前会备份成 config.autodl-lookout.bak；你自己写的配置不会动。
       </p>
 
       <Sheet open={sheet != null} onClose={() => setSheet(null)}

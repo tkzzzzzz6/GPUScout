@@ -478,14 +478,9 @@ pub struct ServerList {
     pub auto_sync: bool,
     /// 这次是否自动同步改了 ~/.ssh/config
     pub synced: bool,
-}
-
-fn config_aliases() -> Vec<String> {
-    let text = sshconfig::config_path().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
-    let mut v: Vec<String> = sshconfig::parse_config(&text).into_iter().map(|h| h.alias).collect();
-    // 管理段里的条目 parse_config 会跳过，单独找
-    v.extend(text.lines().filter_map(|l| l.trim().strip_prefix("Host ").map(|a| a.trim().to_string())));
-    v
+    /// 重名、非法名称或自动写入失败；服务器列表仍可正常使用。
+    pub ssh_sync_error: Option<String>,
+    pub ssh_name_error: bool,
 }
 
 async fn autodl_instances(st: &State<'_, AppState>) -> (Vec<crate::market::RegularInstance>, Option<String>) {
@@ -501,30 +496,42 @@ fn auto_sync_on(st: &State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
-pub async fn list_servers(st: State<'_, AppState>) -> R<ServerList> {
+pub async fn list_servers(st: State<'_, AppState>, force: Option<bool>) -> R<ServerList> {
+    if force.unwrap_or(false) { st.monitor.invalidate_instances().await; }
     let (insts, autodl_error) = autodl_instances(&st).await;
     let saved = st.store.servers()?;
     let auto_sync = auto_sync_on(&st);
     // 实例列表读失败时不同步，免得把配置里的 AutoDL 条目清掉
-    let synced = if auto_sync && autodl_error.is_none() {
-        sshconfig::write_block(&servers::managed_entries(&insts, &saved)).unwrap_or(false)
+    let (synced, write_error) = if auto_sync && autodl_error.is_none() {
+        match servers::sync_config(&st.store, &insts, &saved) {
+            Ok((changed, _)) => (changed, None),
+            Err(error) => (false, Some(error)),
+        }
     } else {
-        false
+        (false, None)
     };
+    let snapshot = sshconfig::read_snapshot();
+    let (config, read_error) = match snapshot { Ok(config) => (config, None), Err(error) => (Default::default(), Some(error)) };
+    let naming_error = servers::managed_entries(&insts, &saved)
+        .and_then(|entries| sshconfig::validate_entries(&entries, &config)).err();
+    let ssh_name_error = naming_error.is_some();
+    let ssh_sync_error = naming_error.or(read_error).or(write_error).or_else(|| st.store.kv_get(servers::SYNC_ERROR_KEY).ok().flatten().filter(|error| !error.is_empty()));
     Ok(ServerList {
-        servers: servers::views(&st.store, &insts, &saved, &config_aliases()),
+        servers: servers::views(&st.store, &insts, &saved, &config),
         autodl_error,
         own_key: crate::ssh::own_public_key(),
         ssh_config_path: sshconfig::config_path().map(|p| p.display().to_string()),
         auto_sync,
         synced,
+        ssh_sync_error,
+        ssh_name_error,
     })
 }
 
 async fn find_server(st: &State<'_, AppState>, id: &str) -> R<ServerView> {
     let saved = st.store.servers()?;
     let insts = if id.starts_with("autodl:") { autodl_instances(st).await.0 } else { vec![] };
-    servers::views(&st.store, &insts, &saved, &config_aliases())
+    servers::views(&st.store, &insts, &saved, &sshconfig::read_snapshot().unwrap_or_default())
         .into_iter()
         .find(|v| v.id == id)
         .ok_or_else(|| "找不到这台服务器，可能已经删除或实例已释放".to_string())
@@ -624,17 +631,17 @@ pub struct SyncResult {
 
 #[tauri::command]
 pub async fn sync_ssh_config(st: State<'_, AppState>) -> R<SyncResult> {
+    st.monitor.invalidate_instances().await;
     let (insts, err) = autodl_instances(&st).await;
     if let (Some(e), true) = (err, st.monitor.market().is_some()) {
         return Err(format!("{e}。为了不把配置里的 AutoDL 条目清掉，这次没有同步"));
     }
-    let entries = servers::managed_entries(&insts, &st.store.servers()?);
-    let changed = sshconfig::write_block(&entries)?;
+    let (changed, count) = servers::sync_config(&st.store, &insts, &st.store.servers()?)?;
     let path = sshconfig::config_path().map(|p| p.display().to_string()).unwrap_or_default();
     if changed {
-        let _ = st.store.log(now(), "info", "server", None, &format!("同步 SSH 配置：{} 台服务器写入 {path}", entries.len()));
+        let _ = st.store.log(now(), "info", "server", None, &format!("同步 SSH 配置：{count} 台服务器写入 {path}"));
     }
-    Ok(SyncResult { changed, count: entries.len(), path })
+    Ok(SyncResult { changed, count, path })
 }
 
 #[tauri::command]
@@ -659,7 +666,8 @@ pub fn vscode_uri(alias: &str, user: &str) -> R<String> {
         return Err("SSH 别名或用户名含有不支持的字符".into());
     }
     let dir = if user == "root" { "/root".to_string() } else { format!("/home/{user}") };
-    Ok(format!("vscode://vscode-remote/ssh-remote+{alias}{dir}?windowId=_blank"))
+    reqwest::Url::parse(&format!("vscode://vscode-remote/ssh-remote+{alias}{dir}?windowId=_blank"))
+        .map(|url| url.to_string()).map_err(|_| "无法生成 VS Code SSH 链接".into())
 }
 
 /// 用 VS Code 打开。vscode:// 不是 http 链接，前端的 openExternal / opener 插件的默认权限都不放行，
@@ -820,7 +828,7 @@ pub async fn servers_overview(st: State<'_, AppState>) -> R<std::collections::Ha
         return Ok(out);
     }
     let (insts, _) = autodl_instances(&st).await;
-    let views: Vec<ServerView> = servers::views(&st.store, &insts, &st.store.servers()?, &[])
+    let views: Vec<ServerView> = servers::views(&st.store, &insts, &st.store.servers()?, &Default::default())
         .into_iter()
         .filter(|v| !v.host.is_empty() && (v.kind != "autodl" || v.status.as_deref() == Some("running")))
         .collect();
@@ -908,6 +916,9 @@ mod tests {
 
     #[test]
     fn vscode_uri_uses_alias_and_home() {
+        let chinese = vscode_uri("训练机-A100", "root").unwrap();
+        assert!(chinese.contains("ssh-remote+%E8%AE%AD") && chinese.ends_with("/root?windowId=_blank"));
+        assert!(!chinese.contains("训练机"));
         assert_eq!(vscode_uri("autodl-qwen-a1b2c3", "root").unwrap(), "vscode://vscode-remote/ssh-remote+autodl-qwen-a1b2c3/root?windowId=_blank");
         assert_eq!(vscode_uri("lab", "tk").unwrap(), "vscode://vscode-remote/ssh-remote+lab/home/tk?windowId=_blank");
         assert!(vscode_uri("a b", "root").is_err());

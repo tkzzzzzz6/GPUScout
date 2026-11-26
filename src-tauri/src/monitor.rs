@@ -393,7 +393,7 @@ impl Monitor {
             vec![]
         };
         let saved = self.store.servers().unwrap_or_default();
-        let views = crate::servers::views(&self.store, &insts, &saved, &[]);
+        let views = crate::servers::views(&self.store, &insts, &saved, &Default::default());
         let ts = now();
         for w in watches {
             if skip_autodl && w.id.starts_with("autodl:") {
@@ -771,7 +771,7 @@ impl Monitor {
                 // 顺便同步 SSH 配置：AutoDL 实例重新开机后端口可能变（设置里开了「自动同步」才做）
                 if self.store.kv_get("ssh_auto_sync").ok().flatten().as_deref() == Some("1") {
                     if let Ok(saved) = self.store.servers() {
-                        if let Ok(true) = crate::sshconfig::write_block(&crate::servers::managed_entries(&list, &saved)) {
+                        if let Ok((true, _)) = crate::servers::sync_config(&self.store, &list, &saved) {
                             self.log("info", "server", None, "AutoDL 实例的 SSH 信息有变化，已自动同步到 SSH 配置");
                         }
                     }

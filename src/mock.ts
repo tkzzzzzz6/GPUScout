@@ -122,7 +122,7 @@ let regular: RegularInstance[] = [
     ssh_command: "ssh -p 32145 root@region-9.autodl.example", jupyter_url: "https://example.invalid/jupyter?token=x",
     service_6006_url: "https://example.invalid/6006", service_6008_url: null,
     started_at: now() - 9.3 * 3600, stopped_at: null, expired_at: null, has_password: true },
-  { uuid: "b7c8d9e0f1-a2b3c4d5", name: "", status: "shutdown", sub_status: "", gpu: "RTX 3090", gpu_amount: 1,
+  { uuid: "b7c8d9e0f1-a2b3c4d5", name: "训练机-3090", status: "shutdown", sub_status: "", gpu: "RTX 3090", gpu_amount: 1,
     region_name: "北京B区", region_sign: "bj-B1", machine_alias: "41机", charge_type: "payg", payg_price_yuan: 1.58,
     ssh_command: "ssh -p 40211 root@region-4.autodl.example", jupyter_url: null, service_6006_url: null, service_6008_url: null,
     started_at: null, stopped_at: now() - 2 * 86400, expired_at: null, has_password: true },
@@ -145,6 +145,28 @@ const PAGE_NAMES: Record<string, string> = {
   stock: "库存", rules: "提醒规则", analysis: "抢卡时段", instances: "我的实例", servers: "服务器", templates: "创建模板", logs: "日志", settings: "设置",
 };
 const uiLogs: { id: number; ts: number; level: string; kind: string; rule_id: null; message: string }[] = [];
+
+function sshNamingIssue(): string | null {
+  const names = new Set<string>();
+  for (const instance of regular) {
+    if (!instance.name || Array.from(instance.name).length > 64 || new TextEncoder().encode(instance.name).length > 253
+      || instance.name.startsWith("-") || !/^[\p{Alphabetic}\p{N}._-]+$/u.test(instance.name)) {
+      return `AutoDL 实例名称“${instance.name}”不能直接用于 SSH，请在 AutoDL 修改名称后刷新并重新同步。`;
+    }
+    const key = instance.name.toLowerCase();
+    if (names.has(key)) return `AutoDL 实例名称“${instance.name}”重名，请在 AutoDL 改成不同名称，不会自动追加编号。`;
+    names.add(key);
+  }
+  for (const server of myServers) {
+    const alias = server.alias ?? `lookout-${server.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "") || "server"}-${server.id}`;
+    if (names.has(alias.toLowerCase())) return `SSH 名称“${alias}”与自有或导入服务器重名，请在 AutoDL 修改实例名后刷新同步。`;
+    names.add(alias.toLowerCase());
+  }
+  for (const reserved of ["lab-3090", "aliyun"]) {
+    if (regular.some((instance) => instance.name.toLowerCase() === reserved)) return `SSH 名称“${reserved}”已被本机 Host 占用，请在 AutoDL 修改实例名后刷新同步。`;
+  }
+  return null;
+}
 
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   await new Promise((r) => setTimeout(r, 120));
@@ -205,22 +227,27 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return { gpu_name: g, fetched_at: now() - 4, machines: 9, idle: 23, min_yuan: tiers[0].price_yuan, median_yuan: tiers[0].price_yuan,
         max_yuan: tiers[2].price_yuan, tiers, multi: [{ cards: 2, machines: 6 }, { cards: 4, machines: 3 }, { cards: 8, machines: 1 }], unpriced_idle: 0, offers };
     },
-    list_servers: () => ({
+    list_servers: () => {
+      const issue = sshNamingIssue();
+      if (autoSync && !issue) sshSynced = true;
+      return ({
       servers: [
         ...regular.map((i) => ({
           id: `autodl:${i.uuid}`, kind: "autodl", name: i.name || `${i.gpu} 实例`, host: i.ssh_command.split("@")[1] ?? "",
-          port: Number(i.ssh_command.split(" ")[2]) || 22, user: "root", alias: `autodl-${i.name || "rtx-3090"}-${i.uuid.slice(0, 6)}`,
-          alias_ready: sshSynced, auth: "password", key_path: null, has_password: true, key_pushed: i.uuid === regular[0].uuid,
+          port: Number(i.ssh_command.split(" ")[2]) || 22, user: "root", alias: i.name,
+          alias_ready: sshSynced && !issue, auth: "password", key_path: null, has_password: true, key_pushed: i.uuid === regular[0].uuid,
           status: i.status, gpu: `${i.gpu} × ${i.gpu_amount}`, region_name: i.region_name, note: null,
         })),
         ...myServers.map((s) => ({
           id: `srv:${s.id}`, kind: "custom", name: s.name, host: s.host, port: s.port, user: s.user,
-          alias: s.alias ?? `lookout-${s.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "") || "server"}-${s.id}`, alias_ready: !!s.alias || sshSynced,
+          alias: s.alias ?? `lookout-${s.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "") || "server"}-${s.id}`, alias_ready: !!s.alias || (sshSynced && !issue),
           auth: s.auth, key_path: s.key_path, has_password: s.auth === "password", key_pushed: s.id === 1, status: null, gpu: null, region_name: null, note: s.note,
         })),
       ],
+      ssh_sync_error: issue, ssh_name_error: !!issue,
       autodl_error: null, own_key: ownKey, ssh_config_path: "C:\\Users\\you\\.ssh\\config", auto_sync: autoSync, synced: false,
-    }),
+    });
+    },
     save_server: () => { const sv = a.server as ServerRecord; if (sv.id > 0) myServers = myServers.map((x) => (x.id === sv.id ? sv : x)); else myServers = [...myServers, { ...sv, id: myServers.length + 10 }]; return 1; },
     delete_server: () => { myServers = myServers.filter((x) => x.id !== a.id); },
     ssh_config_hosts: () => [
@@ -228,7 +255,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       { alias: "aliyun", host: "47.100.12.8", port: 22, user: "ubuntu", identity_file: null },
     ],
     import_ssh_hosts: () => (a.aliases as string[]).length,
-    sync_ssh_config: () => { sshSynced = true; return { changed: true, count: 4, path: "C:\\Users\\you\\.ssh\\config" }; },
+    sync_ssh_config: () => { const issue = sshNamingIssue(); if (issue) throw issue; sshSynced = true; return { changed: true, count: 4, path: "C:\\Users\\you\\.ssh\\config" }; },
     set_ssh_auto_sync: () => { autoSync = !!a.on; },
     open_terminal: () => {},
     open_vscode: () => { if (!sshSynced) throw "NEED_SYNC|VS Code 要通过 SSH 配置里的名字连接，先点「同步到 SSH 配置」"; },
