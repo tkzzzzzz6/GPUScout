@@ -5,7 +5,7 @@ import { LINKS, call, fmtClock, gpuAlias, isGpu, openExternal, yuan, type BaseIm
 import { Icon } from "../icons";
 import { dateLine, formatAgo as ago, formatCuda as cudaText, matchesKeyword as matchKw } from "../format";
 import { useGpuPrice, useNowSec } from "../hooks";
-import { Btn, ConfirmButton, CountUp, FormRow, Group, Page, Row, Segmented, Select, Sheet, Stepper, Tile, softSpring, spring, useAction, useRefData, useToast } from "../ui";
+import { ApiFormatHelp, Btn, ConfirmButton, CountUp, FormRow, Group, Page, Row, Segmented, Select, Sheet, Stepper, Tile, softSpring, spring, useAction, useRefData, useToast } from "../ui";
 import type { PageId } from "../App";
 
 const FULL = 40; // 进度条满格 = 40 张
@@ -188,7 +188,7 @@ function Prices({ region, regionName, gpu, idle }: { region: string; regionName:
       {data && data.median_yuan != null && data.min_yuan !== data.max_yuan && (
         <div className="muted" style={{ fontSize: 12 }}>一半的空闲卡不超过 <span className="num">{yuan(data.median_yuan)}</span>，共 {data.idle} 张、{data.machines} 台机器</div>
       )}
-      {err && <div className="err-text" style={{ fontSize: 12, marginTop: 6 }}>查价格出错：{err}{data ? "（下面是上次的结果）" : ""}</div>}
+      {err && <div className="err-text" style={{ fontSize: 12, marginTop: 6 }}>查价格出错：{err}{data ? "（下面是上次的结果）" : ""}<ApiFormatHelp message={err} /></div>}
       {data && data.tiers.length > 0 && (
         <div className="tiers">
           {data.tiers.slice(0, 6).map((t) => (
