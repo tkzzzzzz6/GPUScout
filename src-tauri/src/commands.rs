@@ -219,6 +219,17 @@ pub fn delete_rule(st: State<'_, AppState>, id: i64) -> R<()> {
     st.store.delete_rule(id)
 }
 
+#[tauri::command]
+pub fn list_rental_plans(st:State<'_,AppState>)->R<Vec<crate::rental_plans::Plan>> {st.store.rental_plans()}
+#[tauri::command]
+pub fn save_rental_plan(st:State<'_,AppState>,plan:crate::rental_plans::Plan)->R<i64> {st.store.save_rental_plan(plan)}
+#[tauri::command]
+pub fn delete_rental_plan(st:State<'_,AppState>,id:i64)->R<()> {st.store.delete_rental_plan(id)}
+#[tauri::command]
+pub fn recent_rental(st:State<'_,AppState>)->R<Option<crate::rental_plans::Plan>> {st.store.recent_rental()}
+#[tauri::command]
+pub fn save_recent_rental(st:State<'_,AppState>,plan:crate::rental_plans::Plan)->R<()> {st.store.save_recent_rental(plan)}
+
 // ---------- templates ----------
 
 #[tauri::command]
@@ -324,7 +335,7 @@ pub enum RentResult {
 #[allow(clippy::too_many_arguments)]
 pub async fn rent_instance(
     st: State<'_, AppState>, region: String, gpu: String, machine_id: String, gpu_amount: i64,
-    image_uuid: String, expected_price: f64, accept_price: bool, image_source: Option<crate::images::Source>,
+    image_uuid: String, expected_price: f64, accept_price: bool, image_source: Option<crate::images::Source>, max_hourly: Option<f64>,
 ) -> R<RentResult> {
     let epoch = st.monitor.image_catalog_cache.epoch();
     let m = market(&st)?;
@@ -356,6 +367,7 @@ pub async fn rent_instance(
     let selected = crate::images::validate_choice(&catalog, &image_uuid, image_source, slot.max_cuda)?;
     if image_source != crate::images::Source::Base { m.check_private_for_machine(&selected, slot).await?; }
     let price = slot.price_yuan.ok_or("这台机器没有按量计费价格，没法租用")?;
+    crate::rental_plans::budget(max_hourly, price, gpu_amount)?;
     if crate::market::price_went_up(expected_price, price) && !accept_price {
         skip(&format!("价格从 ¥{expected_price:.2} 变成 ¥{price:.2}，等用户确认"));
         return Ok(RentResult::PriceChanged { old_yuan: expected_price, new_yuan: price });

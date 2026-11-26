@@ -190,3 +190,5 @@ export function openExternal(url: string) {
   const u = url.startsWith("http") ? url : `https://${url}`;
   return inTauri ? openUrl(u) : window.open(u, "_blank");
 }
+
+export interface RentalPlan { id:number; name:string; image_uuid:string; image_source:ImageSource; gpu_amount:number; max_hourly:number|null; region:string|null; gpu:string|null }

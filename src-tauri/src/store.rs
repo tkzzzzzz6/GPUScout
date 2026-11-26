@@ -146,6 +146,7 @@ impl Store {
                 data_center_list TEXT NOT NULL, image_uuid TEXT NOT NULL, cuda_v_from INTEGER NOT NULL,
                 expand_disk_gb INTEGER NOT NULL, instance_name TEXT, start_command TEXT
             );
+            CREATE TABLE IF NOT EXISTS rental_plans (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS stock_history (
                 ts INTEGER NOT NULL, region TEXT NOT NULL, gpu_name TEXT NOT NULL,
                 idle INTEGER NOT NULL, total INTEGER NOT NULL
@@ -430,6 +431,20 @@ impl Store {
         c.execute("DELETE FROM templates WHERE id=?1", [id]).map_err(e)?;
         Ok(())
     }
+
+    pub fn rental_plans(&self) -> R<Vec<crate::rental_plans::Plan>> {
+        let c=self.conn.lock().unwrap();let mut q=c.prepare("SELECT id,content FROM rental_plans ORDER BY id").map_err(e)?;
+        let rows=q.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?))).map_err(e)?;
+        rows.map(|r|{let (id,text)=r.map_err(e)?;let mut p:crate::rental_plans::Plan=serde_json::from_str(&text).map_err(|e|e.to_string())?;p.id=id;p.validate()?;Ok(p)}).collect()
+    }
+    pub fn save_rental_plan(&self,mut p:crate::rental_plans::Plan)->R<i64> {
+        p.validate()?;let text=serde_json::to_string(&p).map_err(|e|e.to_string())?;let c=self.conn.lock().unwrap();
+        if p.id>0 {if c.execute("UPDATE rental_plans SET content=?1 WHERE id=?2",params![text,p.id]).map_err(e)?==0{return Err("方案已被删除，请刷新".into());}Ok(p.id)}
+        else {c.execute("INSERT INTO rental_plans(content) VALUES(?1)",[text]).map_err(e)?;Ok(c.last_insert_rowid())}
+    }
+    pub fn delete_rental_plan(&self,id:i64)->R<()> {self.conn.lock().unwrap().execute("DELETE FROM rental_plans WHERE id=?1",[id]).map_err(e)?;Ok(())}
+    pub fn save_recent_rental(&self,mut p:crate::rental_plans::Plan)->R<()> {p.validate()?;p.id=0;self.kv_set("recent_regular_rental",&serde_json::to_string(&p).map_err(|e|e.to_string())?)}
+    pub fn recent_rental(&self)->R<Option<crate::rental_plans::Plan>> {self.kv_get("recent_regular_rental")?.filter(|s|!s.is_empty()).map(|s|{let mut p:crate::rental_plans::Plan=serde_json::from_str(&s).map_err(|e|e.to_string())?;p.validate()?;Ok(p)}).transpose()}
 
     // ---------- history ----------
 

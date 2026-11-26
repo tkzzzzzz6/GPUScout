@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { LINKS, call, openExternal, type Template } from "../api";
-import { Btn, ConfirmButton, FormRow, Group, Page, Row, Select, Sheet, Stepper, stagger, useAction, useRefData, useToast } from "../ui";
+import { Btn, ConfirmButton, FormRow, Group, Row, Select, Sheet, Stepper, stagger, useAction, useRefData, useToast } from "../ui";
 
 const blank = (): Template => ({
   id: 0, name: "", gpu_spec_uuid: "5090-p", gpu_amount: 1, data_center_list: [],
@@ -9,7 +9,7 @@ const blank = (): Template => ({
 });
 const CUDA = [113, 117, 118, 121, 124, 128];
 
-export default function TemplatesPage({ hasToken }: { hasToken: boolean }) {
+export function ProTemplates({ hasToken }: { hasToken: boolean }) {
   const ref = useRefData();
   const [list, setList] = useState<Template[]>([]);
   const [edit, setEdit] = useState<Template | null>(null);
@@ -24,7 +24,7 @@ export default function TemplatesPage({ hasToken }: { hasToken: boolean }) {
 
   const save = async () => {
     if (!edit) return;
-    const r = await run(() => call("save_template", { template: { ...edit, name: edit.name.trim() || spec(edit.gpu_spec_uuid) } }), "模板已保存");
+    const r = await run(() => call<number>("save_template", { template: { ...edit, name: edit.name.trim() || spec(edit.gpu_spec_uuid) } }), "模板已保存");
     if (r !== undefined) { setEdit(null); load(); }
   };
   const create = async (t: Template) => {
@@ -33,13 +33,13 @@ export default function TemplatesPage({ hasToken }: { hasToken: boolean }) {
   };
 
   return (
-    <Page>
-      <h1 className="title">创建模板</h1>
-      <p className="lede">把卡型、镜像和开机命令存起来，之后一键创建实例，或者交给提醒规则在有卡时自动创建。通过 API 创建的实例只能按量计费。</p>
+    <div>
+      <h2 className="title">Pro 模板</h2>
+      <p className="lede">仅用于容器实例 Pro。把卡型、镜像和开机命令存起来，之后一键创建实例，或者交给提醒规则在有卡时自动创建。通过 API 创建的实例只能按量计费。</p>
       <div style={{ maxWidth: 720 }}>
         {!hasToken && (
           <Group style={{ marginBottom: 16 }}>
-            <Row icon="key" grey label="创建模板只用于容器实例 Pro" sub="需要在「设置 → 容器实例 Pro（可选）」里填写开发者 Token。租普通实例请直接去算力市场。"
+            <Row icon="key" grey label="Pro 模板需要开发者 Token" sub="需要在「设置 → 容器实例 Pro（可选）」里填写开发者 Token。租普通实例请直接去算力市场。"
               right={<Btn small icon="external" onClick={() => openExternal(LINKS.market)}>算力市场</Btn>} />
           </Group>
         )}
@@ -122,6 +122,6 @@ export default function TemplatesPage({ hasToken }: { hasToken: boolean }) {
           </>
         )}
       </Sheet>
-    </Page>
+    </div>
   );
 }

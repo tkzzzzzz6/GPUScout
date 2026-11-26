@@ -8,6 +8,9 @@ let privateImages: RentalImage[] = [
   {uuid:"private-saving",source:"mine",name:"正在保存的实验环境",status:"saving",framework:"",cuda:null,owner:null,created_at:null,origin:"instance"},
   {uuid:"private-failed",source:"mine",name:"保存失败的环境",status:"failed",framework:"",cuda:null,owner:null,created_at:null,origin:"instance"},
 ];
+let rentalPlans: import("./api").RentalPlan[]=[];
+let recentRental: import("./api").RentalPlan|null=null;
+let nextPlanId=1;
 let mockRentPrice: number | null = null;
 let sshConfig: string | null = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demoSshConfigMissing")
   ? null : "# 本机 SSH 配置示例\nHost lab\n    HostName 10.0.0.8\n    User tk\n";
@@ -268,6 +271,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return r.id;
     },
     delete_rule: () => { rules = rules.filter((r) => r.id !== a.id); },
+    list_rental_plans:()=>rentalPlans,
+    save_rental_plan:()=>{const p={...(a.plan as import("./api").RentalPlan)};if(!p.id)p.id=nextPlanId++;rentalPlans=[...rentalPlans.filter(x=>x.id!==p.id),p];return p.id;},
+    delete_rental_plan:()=>{rentalPlans=rentalPlans.filter(p=>p.id!==a.id);},
+    recent_rental:()=>recentRental,
+    save_recent_rental:()=>{recentRental={...(a.plan as import("./api").RentalPlan),id:0};},
     list_templates: () => templates,
     save_template: () => {
       const t = a.template as Template;

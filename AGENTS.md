@@ -85,6 +85,7 @@ src-tauri/src/
   commands.rs   暴露给前端的 Tauri 命令和手动操作入口
   api.rs        AutoDL 官方开放 API（开发者 Token）：余额、容器实例 Pro、镜像
   market.rs     算力市场库存、余额、普通容器实例（网页登录凭证，控制台内部接口）
+  rental_plans.rs 普通租用方案白名单与整机预算校验
   images.rs     普通镜像来源、保存与下单校验，账号隔离的查询缓存与限流
   monitor.rs    后台轮询、规则判断、通知、自动动作、提醒、缓存和监控轮次互斥
   price.rs      实时价格：分档汇总、缓存、合并请求与全局限流
@@ -129,7 +130,7 @@ src/
     Analysis.tsx   抢卡时段热力图
     Instances.tsx  普通实例/Pro 实例、详情与手动操作
     Servers.tsx    服务器、SSH 同步/连接、实时状态与提醒
-    Templates.tsx  Pro 创建模板
+    RentalPlans.tsx / Templates.tsx  普通租用方案和独立 Pro 模板
     Logs.tsx       日志查看与筛选
     Settings.tsx   凭据、区域、监控、启动项、更新与配置导入导出设置
   assets/          应用图标与打包字体、字体许可

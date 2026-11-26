@@ -2,6 +2,7 @@ pub mod api;
 mod commands;
 pub mod heatmap;
 pub mod images;
+pub mod rental_plans;
 pub mod market;
 pub mod monitor;
 mod notify;
@@ -110,6 +111,8 @@ pub fn run() {
             commands::save_rule,
             commands::delete_rule,
             commands::list_templates,
+            commands::list_rental_plans, commands::save_rental_plan, commands::delete_rental_plan,
+            commands::recent_rental, commands::save_recent_rental,
             commands::save_template,
             commands::delete_template,
             commands::create_from_template,
