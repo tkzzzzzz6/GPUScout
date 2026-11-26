@@ -19,20 +19,21 @@ const withoutCrypto = () => {};
 test("签名配置缺失时明确指出变量名，不输出秘密", () => {
   assert.throws(() => updaterConfig({}), /TAURI_SIGNING_PRIVATE_KEY/);
   assert.throws(() => validatePublicKey("not-a-key"), /base64/);
-  const config = updaterConfig({ GITHUB_REPOSITORY: "owner/repo", TAURI_SIGNING_PRIVATE_KEY: "not-printed", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "not-printed", TAURI_UPDATER_PUBLIC_KEY: pub });
+  const config = updaterConfig({ GITHUB_REPOSITORY: "tkzzzzzz6/GPUScout", TAURI_SIGNING_PRIVATE_KEY: "not-printed", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "not-printed", TAURI_UPDATER_PUBLIC_KEY: pub });
   assert.equal(config.bundle.createUpdaterArtifacts, true);
   assert.equal(config.plugins.updater.pubkey, pub);
+  assert.deepEqual(config.plugins.updater.endpoints, ["https://github.com/tkzzzzzz6/GPUScout/releases/latest/download/latest.json"]);
   assert.ok(!JSON.stringify(config).includes("not-printed"));
 });
 
 test("清单使用四个目标平台、最终文件名和签名内容", () => {
   const dir = fixture();
   try {
-    const manifest = createManifest(dir, "v0.2.0", "owner/repo", pub, "说明", withoutCrypto);
+    const manifest = createManifest(dir, "v0.2.0", "tkzzzzzz6/GPUScout", pub, "说明", withoutCrypto);
     assert.equal(manifest.version, "0.2.0");
     assert.equal(Object.keys(manifest.platforms).length, 4);
     assert.equal(manifest.platforms["darwin-aarch64"].signature, "signature fixture");
-    assert.match(manifest.platforms["windows-x86_64"].url, /v0.2.0\/GPUScout_0.2.0_x64-setup.exe$/);
+    assert.equal(manifest.platforms["windows-x86_64"].url, "https://github.com/tkzzzzzz6/GPUScout/releases/download/v0.2.0/GPUScout_0.2.0_x64-setup.exe");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

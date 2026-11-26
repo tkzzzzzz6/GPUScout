@@ -9,7 +9,7 @@
 
 ## 下载
 
-到 [Releases](https://github.com/tkzzzzzz6/autodl-lookout/releases) 下载安装包：
+到 [Releases](https://github.com/tkzzzzzz6/GPUScout/releases) 下载安装包：
 
 | 系统 | 文件 |
 |---|---|
@@ -143,7 +143,7 @@ npm run tauri dev
 
 测试：`npm test`（脚本/Vitest 单测 + 前端检查与打包 + Rust 单测）、`npm run lint:rust`（Clippy）；只看界面：`npm run demo`。
 
-应用展示名为 GPUScout。为兼容已有安装，应用标识、数据库文件名、钥匙串服务名、SSH 管理段和密钥文件名保留原值，旧规则、凭据与服务器配置继续使用。
+应用与 GitHub 仓库名称均为 GPUScout。已有工作副本可运行 `git remote set-url origin https://github.com/tkzzzzzz6/GPUScout.git` 更新远程地址，本地目录可以保留原名。为兼容已有安装，应用标识、数据库文件名、钥匙串服务名、SSH 管理段和密钥文件名保留原值，旧规则、凭据与服务器配置继续使用。
 
 数据库位置：Windows 在 `%APPDATA%\io.github.tkzzzzzz6.autodl-lookout\autodl-lookout.sqlite3`，macOS 在 `~/Library/Application Support/io.github.tkzzzzzz6.autodl-lookout/`。
 早期开发版的数据在 `dev.local.autodl-lookout`（更早叫 autodl-manager 时在 `dev.local.autodl-manager`），首次启动会自动把旧数据库和凭证搬过来（旧文件保留不动）。
