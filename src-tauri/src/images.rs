@@ -147,7 +147,7 @@ impl CatalogCache {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     fn fixture(source: i64, status: &str) -> Value { json!({"image_uuid":"image-test","name":"训练环境","status":status,"share_image_type":source,"share_image_user":"示例分享者","image_source":"instance","created_at":"2026-11-26"}) }
 
@@ -204,7 +204,7 @@ mod tests {
         assert!(cache.get(true,epoch,true,fetch).await.is_err());assert_eq!(calls.load(Ordering::SeqCst),1);
     }
 
-    async fn server(replies: Vec<Value>) -> (String,tokio::task::JoinHandle<Vec<String>>) {
+    pub(crate) async fn server(replies: Vec<Value>) -> (String,tokio::task::JoinHandle<Vec<String>>) {
         use tokio::io::{AsyncReadExt,AsyncWriteExt};
         let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base=format!("http://{}",listener.local_addr().unwrap());

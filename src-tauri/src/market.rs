@@ -157,7 +157,7 @@ impl MarketClient {
 
 impl MarketClient {
     /// 我的普通容器实例（自动翻页，最多 500 台），返回原始 JSON，密码等字段由调用方决定怎么用
-    async fn instances_raw(&self) -> ApiResult<Vec<Value>> {
+    pub(crate) async fn instances_raw(&self) -> ApiResult<Vec<Value>> {
         let mut out = Vec::new();
         for page in 1..=10 {
             let d = self
