@@ -1,4 +1,4 @@
-# PR 和 main 的检查：和本地的 npm test 一样（tsc + vite build + cargo test），Windows 和 Ubuntu 各跑一遍
+# PR 和 main 的检查：脚本/前端单测、构建、Rust 测试和 Clippy，Windows 和 Ubuntu 各跑一遍
 name: CI
 
 on:
@@ -36,6 +36,8 @@ jobs:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -44,5 +46,9 @@ jobs:
         run: node scripts/version.mjs check
       - name: npm test（不允许新的 warning）
         run: npm test
+        env:
+          RUSTFLAGS: -D warnings
+      - name: cargo clippy（不允许警告）
+        run: npm run lint:rust
         env:
           RUSTFLAGS: -D warnings

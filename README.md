@@ -144,7 +144,7 @@ src/
   mock.ts      浏览器预览用的假数据
 ```
 
-测试：`npm test`（前端检查与打包 + Rust 单元测试）；只看界面：`npm run demo`。
+测试：`npm test`（脚本/Vitest 单测 + 前端检查与打包 + Rust 单测）、`npm run lint:rust`（Clippy）；只看界面：`npm run demo`。
 
 数据库位置：Windows 在 `%APPDATA%\io.github.tkzzzzzz6.autodl-lookout\autodl-lookout.sqlite3`，macOS 在 `~/Library/Application Support/io.github.tkzzzzzz6.autodl-lookout/`。
 早期开发版的数据在 `dev.local.autodl-lookout`（更早叫 autodl-manager 时在 `dev.local.autodl-manager`），首次启动会自动把旧数据库和凭证搬过来（旧文件保留不动）。

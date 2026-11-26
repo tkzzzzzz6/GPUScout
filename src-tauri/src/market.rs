@@ -255,7 +255,7 @@ pub fn parse_base_images(d: &Value) -> ApiResult<Vec<BaseImage>> {
         .filter(|i| !i.uuid.is_empty())
         .collect();
     // 和控制台一样按 rank 排（同一框架里新版本在前）
-    v.sort_by(|a, b| b.rank.cmp(&a.rank));
+    v.sort_by_key(|item| std::cmp::Reverse(item.rank));
     Ok(v)
 }
 
@@ -469,7 +469,7 @@ pub fn sum_filtered(slots: &[MachineSlot], max_price_yuan: Option<f64>, cuda_fro
         .into_iter()
         .map(|(gpu_name, (idle, machines))| StockItem { gpu_name, idle, total: 0, machines: Some(machines) })
         .collect();
-    v.sort_by(|a, b| b.idle.cmp(&a.idle));
+    v.sort_by_key(|item| std::cmp::Reverse(item.idle));
     v
 }
 

@@ -3,19 +3,16 @@ import { LIVE_KEEP, usePolled, useNowSec, useServerStatus } from "../hooks";
 import { AnimatePresence, motion } from "motion/react";
 import { HOSTKEY_CHANGED, LINKS, call, openExternal, setSetting, type HostEntry, type Overview, type Probe, type ServerList, type ServerRecord, type ServerView, type Settings, type Watch } from "../api";
 import { Icon } from "../icons";
+import { formatBytes as gb, formatDuration as dur, sshCommand as sshCmd } from "../format";
 import { Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
 
 const STATUS: Record<string, [string, string]> = {
   running: ["运行中", "on"], shutdown: ["已关机", ""], starting: ["开机中", "warn"], shutting_down: ["关机中", "warn"],
 };
 
-const sshCmd = (v: ServerView) => (v.alias_ready ? `ssh ${v.alias}` : `ssh -p ${v.port} ${v.user}@${v.host}`);
 const errText = (e: unknown) => String(e);
 
 /* ---------------- 状态 ---------------- */
-const gb = (b: number) => (b >= 1e12 ? `${(b / 1e12).toFixed(1)} TB` : `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)} GB`);
-const dur = (s: number | null) => (s == null ? "—" : s >= 86400 ? `${Math.floor(s / 86400)} 天 ${Math.floor((s % 86400) / 3600)} 小时` : s >= 3600 ? `${Math.floor(s / 3600)} 小时 ${Math.floor((s % 3600) / 60)} 分` : `${Math.floor(s / 60)} 分钟`);
-
 function Meter({ ratio, warn }: { ratio: number; warn?: boolean }) {
   return (
     <span className={`meter ${warn ? "warn" : ""}`}>
