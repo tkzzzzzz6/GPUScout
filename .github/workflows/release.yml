@@ -195,7 +195,7 @@ jobs:
       - name: 整理平台产物，拒绝重名和旧文件
         run: |
           mkdir out
-          node scripts/updater-artifacts.mjs collect dist out
+          node scripts/updater-artifacts.mjs collect dist out "$TAG"
       - name: 生成与更新清单一致的发布说明
         env:
           GH_TOKEN: ${{ github.token }}

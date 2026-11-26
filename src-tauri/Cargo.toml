@@ -1,6 +1,6 @@
 [package]
 name = "autodl-lookout"
-version = "0.1.1"
+version = "0.2.0"
 description = "AutoDL GPU stock monitor & instance manager"
 authors = ["tkzzzzzz6"]
 license = "MIT"

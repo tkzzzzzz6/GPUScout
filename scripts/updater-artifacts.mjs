@@ -12,6 +12,25 @@ const targets = {
 };
 const installers = [/_x64-setup\.exe$/, /_x64_en-US\.msi$/, /_aarch64\.dmg$/, /_x64\.dmg$/, /_amd64\.deb$/, /\.x86_64\.rpm$/, /_amd64\.AppImage$/];
 
+function releaseVersion(tag) {
+  if (!/^v\d+\.\d+\.\d+$/.test(tag ?? "")) throw Error("tag 必须是 vX.Y.Z");
+  return tag.slice(1);
+}
+
+function validateArtifactName(name, version) {
+  const asset = name.replace(/\.sig$/, "");
+  const expected = [
+    `GPUScout_${version}_x64-setup.exe`, `GPUScout_${version}_x64_en-US.msi`,
+    `GPUScout_${version}_aarch64.dmg`, `GPUScout_${version}_x64.dmg`,
+    `GPUScout_${version}_amd64.deb`, `GPUScout_${version}_amd64.AppImage`,
+    `GPUScout_${version}_aarch64.app.tar.gz`, `GPUScout_${version}_x64.app.tar.gz`,
+  ];
+  const rpm = new RegExp(`^GPUScout-${version.replaceAll(".", "\\.")}(?:-\\d+)?\\.x86_64\\.rpm$`);
+  if (!expected.includes(asset) && !rpm.test(asset)) {
+    throw Error(`产物名称或版本不符：${name}，应为 GPUScout ${version} 的安装/更新包`);
+  }
+}
+
 export function decodeSigningText(value, label) {
   const text = value?.trim();
   if (!text || !/^[A-Za-z0-9+/]+={0,2}$/.test(text)) throw Error(`${label} 缺失或不是 Tauri 的 base64 格式`);
@@ -44,7 +63,8 @@ export function updaterConfig(env) {
 }
 
 /** 下载时保留各平台 artifact 目录，先解决 macOS 同名文件，再统一清理空格。 */
-export function collectArtifacts(downloadDir, outputDir) {
+export function collectArtifacts(downloadDir, outputDir, tag) {
+  const version = releaseVersion(tag);
   const planned = new Map();
   const visit = (directory, bundle) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -55,7 +75,8 @@ export function collectArtifacts(downloadDir, outputDir) {
       if (/\.app\.tar\.gz(?:\.sig)?$/.test(name)) {
         const arch = { "bundle-macos-aarch64": "aarch64", "bundle-macos-x64": "x64" }[bundle];
         if (!arch) throw Error(`macOS 更新包的平台目录不明确：${bundle}`);
-        name = name.replace(".app.tar.gz", `_${arch}.app.tar.gz`);
+        if (!/^GPUScout\.app\.tar\.gz(?:\.sig)?$/.test(name)) throw Error(`macOS 更新包名称不符：${name}`);
+        name = name.replace(".app.tar.gz", `_${version}_${arch}.app.tar.gz`);
       }
       if (planned.has(name)) throw Error(`更新产物重名：${name}`);
       planned.set(name, path);
@@ -68,6 +89,7 @@ export function collectArtifacts(downloadDir, outputDir) {
     visit(join(downloadDir, bundle.name), bundle.name);
   }
   if (readdirSync(outputDir).length) throw Error("输出目录必须为空，避免使用旧构建产物");
+  for (const name of planned.keys()) validateArtifactName(name, version);
   for (const [name, source] of planned) renameSync(source, join(outputDir, name));
 }
 
@@ -88,10 +110,11 @@ export function verifySignature(file, signature, publicKey, version) {
 }
 
 export function createManifest(directory, tag, repository, publicKey, notes, verify = verifySignature) {
-  if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw Error("tag 必须是 vX.Y.Z");
+  const version = releaseVersion(tag);
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw Error("仓库名称无效");
   validatePublicKey(publicKey);
-  const files = readdirSync(directory);
+  const files = readdirSync(directory).filter((name) => name !== "latest.json");
+  for (const name of files) validateArtifactName(name, version);
   for (const pattern of installers) {
     const matches = files.filter((file) => pattern.test(file));
     if (matches.length !== 1) throw Error(`安装包缺失或重复：${pattern}`);
@@ -116,12 +139,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     const [command, ...args] = process.argv.slice(2);
     if (command === "config" && args.length === 1) {
       writeFileSync(args[0], JSON.stringify(updaterConfig(process.env), null, 2) + "\n");
-    } else if (command === "collect" && args.length === 2) {
+    } else if (command === "collect" && args.length === 3) {
       collectArtifacts(...args);
     } else if (command === "manifest" && args.length === 4) {
       const [directory, tag, repository, notesFile] = args;
       const manifest = createManifest(directory, tag, repository, process.env.TAURI_UPDATER_PUBLIC_KEY, readFileSync(notesFile, "utf8"));
       writeFileSync(join(directory, "latest.json"), JSON.stringify(manifest, null, 2) + "\n");
-    } else throw Error("用法：updater-artifacts.mjs config <输出配置> | collect <下载目录> <空输出目录> | manifest <产物目录> <tag> <owner/repo> <发布说明>");
+    } else throw Error("用法：updater-artifacts.mjs config <输出配置> | collect <下载目录> <空输出目录> <tag> | manifest <产物目录> <tag> <owner/repo> <发布说明>");
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
