@@ -194,6 +194,8 @@ MSI、deb/rpm 或未识别的安装方式只提供版本提示与发布页入口
 
 推送 `v*` tag 后，GitHub Actions（`.github/workflows/release.yml`）会打包 Windows（`.exe`、`.msi`）、macOS（Apple 芯片、Intel 各一个 `.dmg`）和 Linux x64（`.deb`、`.rpm`、`.AppImage`），所有平台都打包成功后一次性创建并**直接发布**到 Releases（设为 Latest），说明按 PR 的 label 自动分组（`.github/release.yml`）。打包过程中不会建草稿；有一个平台失败就什么都不发布，不会发出缺安装包的版本。
 
+新版本使用 `GPUScout` 名称，安装包文件名必须带本次版本号。例如 `v0.2.0` 对应 `GPUScout_0.2.0_x64-setup.exe`、`GPUScout_0.2.0_aarch64.dmg`、`GPUScout_0.2.0_amd64.AppImage`；macOS 更新包为 `GPUScout_0.2.0_aarch64.app.tar.gz` / `GPUScout_0.2.0_x64.app.tar.gz`。RPM 保留包格式自带的发行修订号。收集与清单生成会拒绝旧品牌或旧版本文件，签名文件跟随对应更新包命名；不能只改 Release 标题。
+
 **顺序很重要：先改版本号并合并到 main，再打 tag。** 发版时会检查 tag 和版本号是否一致（`v0.2.0` 对应版本号 `0.2.0`），对不上会直接失败。
 
 1. **改版本号**：从 main 拉一个分支，改版本号，开 PR 合并到 main（PR 打 `ignore-for-release` label，不进更新说明）：

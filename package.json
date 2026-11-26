@@ -1,7 +1,7 @@
 {
   "name": "gpuscout",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "盯着 AutoDL 空闲显卡、有卡就提醒的桌面工具",
   "license": "MIT",
   "repository": {

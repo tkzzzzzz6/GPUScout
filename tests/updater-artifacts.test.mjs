@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectArtifacts, createManifest, updaterConfig, validatePublicKey, verifySignature } from "../scripts/updater-artifacts.mjs";
 
 const pub = Buffer.from(`untrusted comment: test public key\n${Buffer.concat([Buffer.from("Ed"), Buffer.alloc(40, 1)]).toString("base64")}\n`).toString("base64");
-const names = ["GPUScout_0.2.0_x64-setup.exe", "GPUScout_0.2.0_x64_en-US.msi", "GPUScout_0.2.0_aarch64.dmg", "GPUScout_0.2.0_x64.dmg", "GPUScout_0.2.0_amd64.deb", "GPUScout-0.2.0.x86_64.rpm", "GPUScout_0.2.0_amd64.AppImage", "GPUScout_aarch64.app.tar.gz", "GPUScout_x64.app.tar.gz"];
+const names = ["GPUScout_0.2.0_x64-setup.exe", "GPUScout_0.2.0_x64_en-US.msi", "GPUScout_0.2.0_aarch64.dmg", "GPUScout_0.2.0_x64.dmg", "GPUScout_0.2.0_amd64.deb", "GPUScout-0.2.0-1.x86_64.rpm", "GPUScout_0.2.0_amd64.AppImage", "GPUScout_0.2.0_aarch64.app.tar.gz", "GPUScout_0.2.0_x64.app.tar.gz"];
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "lookout-manifest-test-"));
   for (const name of names) { writeFileSync(join(dir, name), "test fixture"); writeFileSync(join(dir, `${name}.sig`), "signature fixture"); }
@@ -55,13 +55,13 @@ test("两个 macOS 架构的同名更新包和签名不会覆盖", () => {
   try {
     for (const arch of ["aarch64", "x64"]) {
       const bundle = join(temp, "download", `bundle-macos-${arch}`, "macos"); mkdirSync(bundle, { recursive: true });
-      writeFileSync(join(bundle, "GPUScout Preview.app.tar.gz"), arch);
-      writeFileSync(join(bundle, "GPUScout Preview.app.tar.gz.sig"), `${arch}-sig`);
+      writeFileSync(join(bundle, "GPUScout.app.tar.gz"), arch);
+      writeFileSync(join(bundle, "GPUScout.app.tar.gz.sig"), `${arch}-sig`);
     }
     const out = join(temp, "out"); mkdirSync(out);
-    collectArtifacts(join(temp, "download"), out);
-    assert.equal(readFileSync(join(out, "GPUScout.Preview_aarch64.app.tar.gz"), "utf8"), "aarch64");
-    assert.equal(readFileSync(join(out, "GPUScout.Preview_x64.app.tar.gz.sig"), "utf8"), "x64-sig");
+    collectArtifacts(join(temp, "download"), out, "v0.2.0");
+    assert.equal(readFileSync(join(out, "GPUScout_0.2.0_aarch64.app.tar.gz"), "utf8"), "aarch64");
+    assert.equal(readFileSync(join(out, "GPUScout_0.2.0_x64.app.tar.gz.sig"), "utf8"), "x64-sig");
   } finally { rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -74,9 +74,34 @@ test("规范化后重名或输出含旧产物时拒绝收集", () => {
       const out = join(temp, "out"); mkdirSync(out);
       if (stale) writeFileSync(join(out, "old.exe"), "old");
       else writeFileSync(join(source, "A.B.exe"), "two");
-      assert.throws(() => collectArtifacts(join(temp, "download"), out), /重名|旧构建/);
+      assert.throws(() => collectArtifacts(join(temp, "download"), out, "v0.2.0"), /重名|旧构建/);
     } finally { rmSync(temp, { recursive: true, force: true }); }
   }
+});
+
+test("旧版本或旧品牌文件在移动及生成清单前被拒绝", () => {
+  for (const bad of ["GPUScout_0.1.1_x64-setup.exe", "AutoDL.Lookout_0.2.0_x64-setup.exe", "GPUScout-0.1.1-1.x86_64.rpm", "GPUScout_0.2.0.1_x64-setup.exe", "GPUScout_0.2.0_arm64.deb"]) {
+    const temp = mkdtempSync(join(tmpdir(), "lookout-release-name-test-"));
+    const dir = fixture();
+    try {
+      const source = join(temp, "download", "bundle-windows-x64"); mkdirSync(source, { recursive: true });
+      writeFileSync(join(source, bad), "stale fixture");
+      const out = join(temp, "out"); mkdirSync(out);
+      assert.throws(() => collectArtifacts(join(temp, "download"), out, "v0.2.0"), /名称或版本不符/);
+      assert.ok(existsSync(join(source, bad)), "拒绝时不应先移动部分文件");
+      writeFileSync(join(dir, bad), "stale fixture");
+      assert.throws(() => createManifest(dir, "v0.2.0", "owner/repo", pub, "", withoutCrypto), /名称或版本不符/);
+    } finally { rmSync(temp, { recursive: true, force: true }); rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test("macOS 清单 URL 同时包含产品、版本和架构", () => {
+  const dir = fixture();
+  try {
+    const manifest = createManifest(dir, "v0.2.0", "owner/repo", pub, "", withoutCrypto);
+    assert.match(manifest.platforms["darwin-aarch64"].url, /GPUScout_0\.2\.0_aarch64\.app\.tar\.gz$/);
+    assert.match(manifest.platforms["darwin-x86_64"].url, /GPUScout_0\.2\.0_x64\.app\.tar\.gz$/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("真实 Tauri 签名可验证，篡改产物、公钥、版本和签名都被拒绝", { skip: spawnSync("minisign", ["-v"]).status !== 0 }, () => {
