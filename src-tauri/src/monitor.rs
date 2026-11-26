@@ -153,6 +153,7 @@ pub struct Snapshot {
     pub rules: Vec<RuleState>,
     pub balance: Option<Balance>,
     pub balance_at: Option<i64>,
+    pub balance_error: Option<String>,
 }
 
 pub struct Monitor {
@@ -185,6 +186,9 @@ pub struct Monitor {
     pub live: Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>,
     /// 列表概览单台出错时的退避：id → (下次可以采集的时间, 当前退避秒数)
     pub overview_backoff: Mutex<HashMap<String, (i64, i64)>>,
+    /// 按字段错误去重，不记录原始响应或凭证；同一种格式错误在本次运行中只记一次。
+    format_errors: Mutex<BTreeSet<String>>,
+    trusted_hits: Mutex<HashMap<i64, bool>>,
 }
 
 /// 实例列表缓存时间：服务器页、状态面板、后台提醒在这段时间内共用一次查询
@@ -192,6 +196,23 @@ pub const INSTANCES_FRESH_SECS: i64 = 30;
 const PASSWORD_FRESH_SECS: i64 = 600;
 
 pub type QKey = (String, Option<i64>, Option<i64>, i64, String);
+
+fn should_log_format_error(seen: &mut BTreeSet<String>, message: &str) -> bool {
+    match message.find(crate::api::FORMAT_ERROR_PREFIX) {
+        Some(start) => seen.insert(message[start..].to_string()),
+        None => true,
+    }
+}
+
+/// 格式错误不代表没卡，托盘保留这些规则上次可信的结果；规则本身仍标成出错。
+fn tray_hits(current: &[RuleState], previous: &mut HashMap<i64, bool>) -> usize {
+    previous.retain(|id, _| current.iter().any(|state| state.rule_id == *id));
+    current.iter().filter(|state| {
+        if state.error.as_deref().is_some_and(crate::api::is_format_error) {
+            previous.get(&state.rule_id).copied().unwrap_or(false)
+        } else { previous.insert(state.rule_id, state.hit); state.hit }
+    }).count()
+}
 
 impl Monitor {
     pub fn new(store: Arc<Store>, token: Option<String>, web_token: Option<String>) -> Arc<Self> {
@@ -216,6 +237,8 @@ impl Monitor {
             images_cache: tokio::sync::Mutex::new(None),
             live: Mutex::new(HashMap::new()),
             overview_backoff: Mutex::new(HashMap::new()),
+            format_errors: Mutex::new(BTreeSet::new()),
+            trusted_hits: Mutex::new(HashMap::new()),
         })
     }
 
@@ -270,6 +293,7 @@ impl Monitor {
     }
 
     fn log(&self, level: &str, kind: &str, rule_id: Option<i64>, msg: &str) {
+        if !should_log_format_error(&mut self.format_errors.lock().unwrap(), msg) { return; }
         let _ = self.store.log(now(), level, kind, rule_id, msg);
     }
 
@@ -570,7 +594,6 @@ impl Monitor {
 
         // 2) 规则
         let mut rule_states = Vec::new();
-        let mut hits = 0;
         for rule in &rules {
             let res = results.get(&rule_key(rule));
             let mut st = RuleState { rule_id: rule.id, market_url: self.market_url_of(&rule.region_sign), ..Default::default() };
@@ -581,7 +604,6 @@ impl Monitor {
                         st.idle_sum = m.idle_sum;
                         st.machines = machines_of(&m);
                         st.matched = m.matched.iter().map(|i| format!("{}×{}", i.gpu_name, i.idle)).collect();
-                        hits += 1;
                         if !in_cooldown(rule, ts) {
                             let _ = self.store.mark_rule_fired(rule.id, ts);
                             self.fire(app, client.as_ref(), rule, &m, &settings).await;
@@ -593,22 +615,30 @@ impl Monitor {
             }
             rule_states.push(st);
         }
-        crate::tray::set_hits(app, hits);
+        crate::tray::set_hits(app, tray_hits(&rule_states, &mut self.trusted_hits.lock().unwrap()));
 
         // 3) 余额（每 5 分钟；优先网页凭证，没有再用开发者 Token）
         let need_balance = self.snapshot.read().unwrap().balance_at.map(|t| ts - t >= 300).unwrap_or(true);
         if need_balance {
             let b = match (&market, &client) {
-                (Some(m), _) => m.wallet().await.ok(),
-                (None, Some(c)) => c.balance().await.ok(),
-                _ => None,
+                (Some(m), _) => m.wallet().await,
+                (None, Some(c)) => c.balance().await,
+                _ => unreachable!("进入轮询前已检查凭证"),
             };
-            if let Some(b) = b {
-                self.check_low_balance(app, &b, settings.low_balance_yuan);
-                self.update(app, |s| {
-                    s.balance = Some(b);
-                    s.balance_at = Some(ts);
-                });
+            match b {
+                Ok(b) => {
+                    self.check_low_balance(app, &b, settings.low_balance_yuan);
+                    self.update(app, |s| {
+                        s.balance = Some(b);
+                        s.balance_at = Some(ts);
+                        s.balance_error = None;
+                    });
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if crate::api::is_format_error(&message) { self.log("error", "poll", None, &message); }
+                    self.update(app, |s| { s.balance = None; s.balance_error = Some(message); });
+                }
             }
         }
         // 4) 长时间运行的实例（每 5 分钟）：普通实例用网页凭证，Pro 实例用开发者 Token
@@ -639,6 +669,9 @@ impl Monitor {
         }
 
         let err = if any_ok || regions.is_empty() { None } else { first_err.clone() };
+        for error in results.values().filter_map(|result| result.as_ref().err()).filter(|error| crate::api::is_format_error(error)) {
+            self.log("error", "poll", None, error);
+        }
         if let Some(e) = &err {
             self.log("error", "poll", None, e);
         }
@@ -827,6 +860,28 @@ pub fn parse_time_field(v: Option<&serde_json::Value>) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_errors_are_logged_once_even_when_several_regions_fail() {
+        let error = crate::api::shape_error("gpu_type.idle_gpu_num").to_string();
+        let mut seen = BTreeSet::new();
+        assert!(should_log_format_error(&mut seen, &format!("西北B区：{error}")));
+        assert!(!should_log_format_error(&mut seen, &format!("北京B区：{error}")));
+        assert!(should_log_format_error(&mut seen, &crate::api::shape_error("wallet.assets").to_string()));
+        assert!(should_log_format_error(&mut seen, "网络超时"));
+        assert!(should_log_format_error(&mut seen, "网络超时"));
+    }
+
+    #[test]
+    fn format_error_does_not_clear_the_last_trustworthy_tray_count() {
+        let mut previous = HashMap::from([(1, true)]);
+        let mut current = vec![RuleState { rule_id:1, error:Some(crate::api::shape_error("gpu_type.data").to_string()), ..Default::default() }];
+        assert_eq!(tray_hits(&current, &mut previous), 1);
+        assert_eq!(tray_hits(&current, &mut previous), 1, "连续失败也保留上次可信值");
+        assert!(!current[0].hit && current[0].error.is_some());
+        current[0].error = None;
+        assert_eq!(tray_hits(&current, &mut previous), 0, "正常查询得到 0 时才清掉命中");
+    }
 
     fn rule(kw: &str, min: i64) -> Rule {
         Rule {

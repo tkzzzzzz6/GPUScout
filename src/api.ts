@@ -85,7 +85,7 @@ export interface Snapshot {
   has_token: boolean; has_web_token: boolean; web_token_exp: number | null; paused: boolean; running: boolean;
   last_run_at: number | null; next_run_at: number | null; last_error: string | null;
   interval_secs: number; regions: RegionStock[]; rules: RuleState[];
-  balance: Balance | null; balance_at: number | null;
+  balance: Balance | null; balance_at: number | null; balance_error: string | null;
 }
 export interface Settings {
   poll_interval_secs: number; regions: string[]; low_balance_yuan: number;
@@ -150,6 +150,9 @@ export function errText(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
 }
 
+export const API_FORMAT_ERROR_PREFIX = "AutoDL 的接口格式好像变了";
+export const isApiFormatError = (message: string | null | undefined) => !!message?.includes(API_FORMAT_ERROR_PREFIX);
+
 /** 库存接口里有些卡型名不直观，补一个对应的显卡说明 */
 const GPU_ALIAS: Record<string, string> = {
   "vGPU-32GB": "4080S 32G",
@@ -168,6 +171,8 @@ export function regionOptions(regions: Opt[]) {
 }
 
 export const LINKS = {
+  issues: "https://github.com/tkzzzzzz6/autodl-lookout/issues",
+  releases: "https://github.com/tkzzzzzz6/autodl-lookout/releases/latest",
   devToken: "https://www.autodl.com/console/center/settings/token",
   proDocs: "https://www.autodl.com/docs/instance_pro_api/",
   market: "https://www.autodl.com/market/list",

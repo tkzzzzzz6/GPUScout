@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { call, inTauri, onSnapshot, type Snapshot } from "./api";
+import { API_FORMAT_ERROR_PREFIX, call, inTauri, isApiFormatError, LINKS, onSnapshot, openExternal, type Snapshot } from "./api";
 import { Icon } from "./icons";
-import { CountUp, Segmented, type SegItem } from "./ui";
+import { Btn, CountUp, Group, Segmented, type SegItem } from "./ui";
 import appIcon from "./assets/app-icon.svg";
 import StockPage from "./pages/Stock";
 import RulesPage from "./pages/Rules";
@@ -45,6 +45,9 @@ export default function App() {
 
   const hits = snap?.rules.filter((r) => r.hit).length ?? 0;
   const next = snap?.next_run_at ? Math.max(0, snap.next_run_at - now) : null;
+  const formatErrors = [...new Set([snap?.last_error, snap?.balance_error,
+    ...(snap?.regions.map((r) => r.error) ?? []), ...(snap?.rules.map((r) => r.error) ?? []),
+  ].filter((error): error is string => isApiFormatError(error)).map((error) => error.slice(error.indexOf(API_FORMAT_ERROR_PREFIX))))];
 
   let dot = "", status = "监控中";
   if (!snap) { dot = "idle"; status = "加载中"; }
@@ -94,9 +97,18 @@ export default function App() {
                 <span>¥<CountUp value={snap.balance.assets} decimals={2} /></span>
               </span>
             )}
+            {snap?.balance_error && <span className="capsule err" title={snap.balance_error}>余额暂不可用</span>}
           </div>
         </header>
         <main className="content">
+          {formatErrors.length > 0 && <Group style={{ marginBottom: 20 }}>
+            <div className="group-row" role="alert"><div>
+              <b>接口格式变化，部分数据暂不可用</b>
+              {formatErrors.map((error) => <p className="err-text" key={error}>{error}</p>)}
+              <Btn small icon="external" onClick={() => openExternal(LINKS.releases)}>查看最新版本</Btn>{" "}
+              <Btn small icon="external" onClick={() => openExternal(LINKS.issues)}>到 GitHub 反馈</Btn>
+            </div></div>
+          </Group>}
           <AnimatePresence mode="wait">
             <PageBoundary key={page} page={page}>
               {page === "stock" && <StockPage snap={snap} go={setPage} />}

@@ -21,6 +21,22 @@ pub enum ApiError {
     Api { code: String, msg: String },
     #[error("解析响应失败: {0}")]
     Parse(String),
+    #[error("AutoDL 的接口格式好像变了（{0} 字段缺失或类型不正确），相关数字暂时不可信。请到 GitHub 更新软件或反馈")]
+    Shape(String),
+}
+
+pub const FORMAT_ERROR_PREFIX: &str = "AutoDL 的接口格式好像变了";
+
+pub fn is_format_error(message: &str) -> bool { message.contains(FORMAT_ERROR_PREFIX) }
+
+pub(crate) fn shape_error(field: &str) -> ApiError { ApiError::Shape(field.to_string()) }
+
+pub(crate) fn required_str<'a>(value: &'a Value, key: &str, field: &str) -> ApiResult<&'a str> {
+    value.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).ok_or_else(|| shape_error(field))
+}
+
+pub(crate) fn required_count(value: &Value, key: &str, field: &str) -> ApiResult<i64> {
+    value.get(key).and_then(Value::as_i64).filter(|n| *n >= 0).ok_or_else(|| shape_error(field))
 }
 
 impl ApiError {
@@ -256,10 +272,9 @@ pub fn clean_token(raw: &str) -> String {
 pub fn parse_stock(d: &Value) -> ApiResult<Vec<StockItem>> {
     let arr = match d {
         Value::Array(a) => a.clone(),
-        Value::Null => vec![],
         // 防御：万一返回的是对象而不是数组
         Value::Object(m) => m.iter().map(|(k, v)| json!({ k.clone(): v.clone() })).collect(),
-        other => return Err(ApiError::Parse(format!("库存数据格式异常: {other}"))),
+        _ => return Err(shape_error("gpu_type.data")),
     };
     let mut out = Vec::new();
     for item in arr {
@@ -272,11 +287,11 @@ pub fn parse_stock(d: &Value) -> ApiResult<Vec<StockItem>> {
                 out.push(StockItem {
                     machines: None,
                     gpu_name: name,
-                    idle: v.get("idle_gpu_num").and_then(|x| x.as_i64()).unwrap_or(0),
-                    total: v.get("total_gpu_num").and_then(|x| x.as_i64()).unwrap_or(0),
+                    idle: required_count(&v, "idle_gpu_num", "gpu_type.idle_gpu_num")?,
+                    total: required_count(&v, "total_gpu_num", "gpu_type.total_gpu_num")?,
                 });
             }
-        }
+        } else { return Err(shape_error("gpu_type.data[]")); }
     }
     out.sort_by(|a, b| b.idle.cmp(&a.idle).then(a.gpu_name.cmp(&b.gpu_name)));
     Ok(out)
@@ -285,6 +300,20 @@ pub fn parse_stock(d: &Value) -> ApiResult<Vec<StockItem>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_stock_is_an_error_instead_of_zero_or_partial_results() {
+        for value in [json!(null), json!([1]), json!([{"RTX 4090":{"idle": 2, "total_gpu_num":8}}]),
+            json!([{"RTX 4090":{"idle_gpu_num":0,"total_gpu_num":8}}, {"A100":{"idle_gpu_num":"2","total_gpu_num":8}}]),
+            json!([{"A100":{"idle_gpu_num":-1,"total_gpu_num":8}}])] {
+            let error = parse_stock(&value).unwrap_err().to_string();
+            assert!(is_format_error(&error) && error.contains("GitHub"));
+        }
+        assert!(parse_stock(&json!([])).unwrap().is_empty());
+        assert!(parse_stock(&json!({})).unwrap().is_empty());
+        assert!(parse_stock(&json!([{"CPU":{}}])).unwrap().is_empty());
+        assert_eq!(parse_stock(&json!({"A100":{"idle_gpu_num":0,"total_gpu_num":8}})).unwrap()[0].idle, 0);
+    }
 
     #[test]
     fn parses_real_response_shape_and_skips_cpu() {

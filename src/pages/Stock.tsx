@@ -321,7 +321,7 @@ function RegionGroup({ rs, rules }: { rs: RegionStock; rules: Rule[] }) {
       <div className="section-title">
         <Icon name="server" size={22} stroke={1.8} />
         <h2>{rs.region_name}</h2>
-        <span className="aside num">共 <CountUp value={total} /> 张空闲</span>
+        <span className="aside num">{rs.error ? "查询失败" : <>共 <CountUp value={total} /> 张空闲</>}</span>
       </div>
       {rs.error ? (
         <Group><div className="group-row"><Tile name="x" sm /><div className="grow err-text">{rs.error}</div></div></Group>
@@ -478,6 +478,9 @@ export default function StockPage({ snap, go }: { snap: Snapshot | null; go: (p:
   if (!snap.has_web_token) {
     hero = <>先连接你的 AutoDL 账号。</>;
     lede = "在「设置」里粘贴网页登录凭证，就能看到和控制台算力市场一样的空闲显卡数。";
+  } else if (hits.length === 0 && (enabled.some((s) => s.error) || snap.regions.some((r) => r.error))) {
+    hero = <>部分库存暂时查不到。</>;
+    lede = "查询失败不代表没有空闲卡，请查看错误提示，或到 AutoDL 控制台确认。";
   } else if (hits.length === 0) {
     hero = <>现在，你关注的卡都没有空闲。</>;
     lede = enabled.length ? `正在盯着 ${enabled.length} 条规则，有卡会第一时间推送通知。` : "还没有提醒规则，去添加一条吧。";
@@ -529,8 +532,8 @@ export default function StockPage({ snap, go }: { snap: Snapshot | null; go: (p:
 
       {snap.regions.length > 0 && (
         <>
-          <WatchSummary regions={snap.regions} models={models} picked={view === "model" ? focus : null}
-            onPick={(kw) => { if (view === "model" && focus === kw) setFocus(null); else { setFocus(kw); setView("model"); } }} />
+          {snap.regions.some((r) => r.error) ? <p className="group-foot">部分区域查询失败，汇总暂不可用；下方只展示成功查询的数字。</p> : <WatchSummary regions={snap.regions} models={models} picked={view === "model" ? focus : null}
+            onPick={(kw) => { if (view === "model" && focus === kw) setFocus(null); else { setFocus(kw); setView("model"); } }} />}
           <div className="row" style={{ justifyContent: "space-between", margin: "0 6px 18px" }}>
             <span className="muted" style={{ fontSize: 13 }}>
               {view === "region" ? "按区域看每种卡的空闲数" : "同一种卡在各区的空闲数和合计"}
@@ -580,7 +583,7 @@ function Widget({ enabled, hits, lastRun }: {
             <div key={s.rule_id} className={s.hit ? "hit" : ""}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 title={s.matched.length ? `由 ${s.matched.join("、").replace(/×/g, " ")} 张相加` : undefined}>{r.name}</span>
-              <b><CountUp value={s.idle_sum} /></b>
+              <b title={s.error ?? undefined} style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{s.error ? "出错" : <CountUp value={s.idle_sum} />}</b>
             </div>
           ))}
           {enabled.length === 0 && <div>还没有规则</div>}
