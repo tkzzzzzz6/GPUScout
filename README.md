@@ -170,11 +170,11 @@ npm run tauri dev
 
 MSI、deb/rpm 或未识别的安装方式只提供版本提示与发布页入口，使用同类型安装包或包管理器升级。更新不改变应用标识或删除规则、设置、数据库、SSH 配置和钥匙串凭据。首个接入更新功能的版本仍需手动安装一次。
 
-正式发布包的更新公钥由下面的签名配置注入。未配置的本地构建不发起应用内更新请求，可打开发布页下载。浏览器演示支持完整假更新流程，不会连接 GitHub、下载文件或修改系统。
+默认发布的普通安装包使用手动下载安装，不依赖更新签名密钥，不发起应用内更新请求。选择签名更新发布时，更新公钥由下面的签名配置注入。浏览器演示支持完整假更新流程，不会连接 GitHub、下载文件或修改系统。
 
-## 自动更新签名配置
+## 自动更新签名配置（可选）
 
-维护者先在自己的电脑生成更新签名密钥：`npm run tauri -- signer generate -w <安全目录>/autodl-lookout.key`，按提示设置密码并备份私钥与 `.pub` 公钥。私钥丢失后，现有客户端无法验证新密钥签发的更新。
+需要提供应用内自动更新时，维护者先在自己的电脑生成更新签名密钥：`npm run tauri -- signer generate -w <安全目录>/autodl-lookout.key`，按提示设置密码并备份私钥与 `.pub` 公钥。私钥丢失后，现有客户端无法验证新密钥签发的更新。
 
 在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
 
@@ -186,13 +186,19 @@ MSI、deb/rpm 或未识别的安装方式只提供版本提示与发布页入口
 
 私钥和密码不要提交、贴进 issue 或发在聊天中；公钥可公开，会写入发布版配置。Tauri 的更新签名用于验证更新来源，不代替 Windows 代码签名和 Apple 公证。
 
-发版会先检查签名配置；全平台构建成功后，保留更新包和签名、区分 macOS 两种架构，验证签名绑定的版本，再生成 `latest.json` 并统一发布。缺配置、缺产物、错签名或重名都会失败。dry-run 同样验签，但只留存核验后的 artifacts，不发布。手动运行时可填 `build_ref` 为已审阅的分支或提交 SHA，`tag` 填与该代码版本一致的 `vX.Y.Z`；这样无需先推送会触发正式发布的 tag，就能验证新代码。正式发布禁止使用 `build_ref`，仍从已推送的 tag 构建。Linux 上 `npm test` 会在安装了 `minisign` 时执行真实 Tauri 签名回归测试；没有该工具的平台明确跳过这一项，其余清单检查照常运行。
+默认推送 tag 发布普通安装包，发布和本地 `npm run tauri build` 都不要求更新密钥。工作流会明确关闭更新产物生成并清空构建中的更新公钥；已有密钥配置不会影响普通发包。
 
-本地仅打普通安装包时，可用 `npm run tauri build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'` 关闭更新产物生成；正式发布必须通过配置签名的 workflow。首个支持自动更新的版本仍需用户手动安装一次。Windows NSIS、macOS、Linux AppImage 可接入应用内更新；deb/rpm 使用对应包或包管理器，MSI 用户需核实安装方式兼容性。
+需要正式发布签名更新包时，在推送新 tag **之前**设置仓库 Actions Variable `GPUSCOUT_SIGNED_UPDATES=true`，tag 触发时就会选择签名模式；未设置或不为 `true` 时仍是普通安装包。手动运行「发版」时由 `signed_updates` 选项独立决定模式，可用于 dry-run 或重试尚未发布的 tag。已经发布过的版本不能追加切换模式，避免普通发版与签名发版争用同一个版本号。只有该模式才读取、检查签名配置，保留更新包和签名，验证签名绑定版本，再生成 `latest.json`；缺配置、缺产物、错签名或重名都会失败。签名校验不会因普通发布模式而关闭。首个支持自动更新的版本仍需手动安装一次。
+
+两种模式均支持 `dry_run`：只留存核验后的 artifacts，不发布。手动运行时可填 `build_ref` 为已审阅的分支或提交 SHA，`tag` 填与该代码版本一致的 `vX.Y.Z`；正式发布仍禁止 `build_ref`，只从已推送的 tag 构建。Linux 测试在安装了 `minisign` 时执行真实 Tauri 签名回归，没有该工具的平台明确跳过这一项。
 
 ## 发版
 
-推送 `v*` tag 后，GitHub Actions（`.github/workflows/release.yml`）会打包 Windows（`.exe`、`.msi`）、macOS（Apple 芯片、Intel 各一个 `.dmg`）和 Linux x64（`.deb`、`.rpm`、`.AppImage`），所有平台都打包成功后一次性创建并**直接发布**到 Releases（设为 Latest），说明按 PR 的 label 自动分组（`.github/release.yml`）。打包过程中不会建草稿；有一个平台失败就什么都不发布，不会发出缺安装包的版本。
+默认推送 `v*` tag 不需要更新签名密钥。GitHub Actions（`.github/workflows/release.yml`）会打包 Windows（`.exe`、`.msi`）、macOS（Apple 芯片、Intel 各一个 `.dmg`）和 Linux x64（`.deb`、`.rpm`、`.AppImage`），所有平台都打包成功后一次性创建并**直接发布**到 Releases（设为 Latest），说明按 PR 的 label 自动分组（`.github/release.yml`）。打包过程中不会建草稿；有一个平台失败就什么都不发布，不会发出缺安装包的版本。
+
+每次发布都包含 `checksums.txt`，使用与常见 Release 相同的 SHA-256 格式：`64 个小写十六进制字符的哈希  文件名`（中间两个空格）。它覆盖同次发布中的全部其他文件（签名模式也包括更新包、签名和 `latest.json`），按文件名排序，排除清单自身。SHA-256 用于核对文件内容，应用内自动更新仍需签名验证。
+
+下载清单列出的文件后，在同一目录校验：Linux 使用 `sha256sum -c checksums.txt`，macOS 使用 `shasum -a 256 -c checksums.txt`；Windows PowerShell 使用 `Get-FileHash .\GPUScout_* -Algorithm SHA256`，与清单逐项比对。任一文件被修改，哈希都会变化。
 
 新版本使用 `GPUScout` 名称，安装包文件名必须带本次版本号。例如 `v0.2.0` 对应 `GPUScout_0.2.0_x64-setup.exe`、`GPUScout_0.2.0_aarch64.dmg`、`GPUScout_0.2.0_amd64.AppImage`；macOS 更新包为 `GPUScout_0.2.0_aarch64.app.tar.gz` / `GPUScout_0.2.0_x64.app.tar.gz`。RPM 保留包格式自带的发行修订号。收集与清单生成会拒绝旧品牌或旧版本文件，签名文件跟随对应更新包命名；不能只改 Release 标题。
 

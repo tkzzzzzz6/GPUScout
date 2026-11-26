@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -49,17 +50,65 @@ export function validatePublicKey(value) {
   return value.trim();
 }
 
-export function updaterConfig(env) {
-  for (const name of ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "TAURI_UPDATER_PUBLIC_KEY"]) {
-    if (!env[name]?.trim()) throw Error(`请先在仓库 Actions 设置中配置 ${name}`);
-  }
+function releaseMode(mode) {
+  if (!["installers", "signed"].includes(mode)) throw Error("发布模式必须是 installers 或 signed");
+  return mode;
+}
+
+export function updaterConfig(env, mode = "installers") {
+  releaseMode(mode);
   const repository = env.GITHUB_REPOSITORY;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? "")) throw Error("GITHUB_REPOSITORY 无效");
-  return { bundle: { createUpdaterArtifacts: true }, plugins: { updater: {
-    pubkey: validatePublicKey(env.TAURI_UPDATER_PUBLIC_KEY),
+  if (mode === "signed") {
+    for (const name of ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "TAURI_UPDATER_PUBLIC_KEY"]) {
+      if (!env[name]?.trim()) throw Error(`请先在仓库 Actions 设置中配置 ${name}`);
+    }
+  }
+  return { bundle: { createUpdaterArtifacts: mode === "signed" }, plugins: { updater: {
+    pubkey: mode === "signed" ? validatePublicKey(env.TAURI_UPDATER_PUBLIC_KEY) : "",
     requireSignedVersion: true,
     endpoints: [`https://github.com/${repository}/releases/latest/download/latest.json`],
   } } };
+}
+
+function releaseFiles(directory, tag) {
+  const version = releaseVersion(tag);
+  const files = readdirSync(directory).filter((name) => name !== "checksums.txt");
+  for (const name of files) {
+    if (name !== "latest.json") validateArtifactName(name, version);
+    if (!statSync(join(directory, name)).isFile() || statSync(join(directory, name)).size === 0) throw Error(`发布文件为空或不是普通文件：${name}`);
+  }
+  return files;
+}
+
+function validateInstallers(directory, files) {
+  for (const pattern of installers) {
+    const matches = files.filter((file) => pattern.test(file));
+    if (matches.length !== 1) throw Error(`安装包缺失或重复：${pattern}`);
+    if (!statSync(join(directory, matches[0])).isFile() || statSync(join(directory, matches[0])).size === 0) throw Error(`安装包为空：${matches[0]}`);
+  }
+}
+
+/** GNU sha256sum 格式，覆盖所有其他发布文件；自身不参与哈希，避免循环依赖。 */
+export function createChecksums(directory, tag, mode = "installers") {
+  releaseMode(mode);
+  const files = releaseFiles(directory, tag);
+  validateInstallers(directory, files);
+  if (mode === "installers" && files.some((name) => !installers.some((pattern) => pattern.test(name)))) {
+    throw Error("普通安装包模式不接受更新清单、签名或自动更新压缩包");
+  }
+  if (mode === "signed") {
+    if (!files.includes("latest.json")) throw Error("签名更新模式缺少 latest.json");
+    const manifest = JSON.parse(readFileSync(join(directory, "latest.json"), "utf8"));
+    if (manifest.version !== releaseVersion(tag) || Object.keys(manifest.platforms ?? {}).sort().join() !== Object.keys(targets).sort().join()) throw Error("更新清单版本或平台不符");
+    for (const pattern of Object.values(targets)) {
+      const matches = files.filter((name) => pattern.test(name));
+      if (matches.length !== 1 || !files.includes(`${matches[0]}.sig`)) throw Error("签名更新模式缺少更新文件或签名");
+    }
+  }
+  const contents = files.sort().map((name) => `${createHash("sha256").update(readFileSync(join(directory, name))).digest("hex")}  ${name}\n`).join("");
+  writeFileSync(join(directory, "checksums.txt"), contents);
+  return contents;
 }
 
 /** 下载时保留各平台 artifact 目录，先解决 macOS 同名文件，再统一清理空格。 */
@@ -113,14 +162,8 @@ export function createManifest(directory, tag, repository, publicKey, notes, ver
   const version = releaseVersion(tag);
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw Error("仓库名称无效");
   validatePublicKey(publicKey);
-  const files = readdirSync(directory).filter((name) => name !== "latest.json");
-  for (const name of files) validateArtifactName(name, version);
-  for (const pattern of installers) {
-    const matches = files.filter((file) => pattern.test(file));
-    if (matches.length !== 1) throw Error(`安装包缺失或重复：${pattern}`);
-    const file = join(directory, matches[0]);
-    if (!statSync(file).isFile() || statSync(file).size === 0) throw Error(`安装包为空：${matches[0]}`);
-  }
+  const files = releaseFiles(directory, tag).filter((name) => name !== "latest.json");
+  validateInstallers(directory, files);
   const platforms = {};
   for (const [target, pattern] of Object.entries(targets)) {
     const matches = files.filter((file) => pattern.test(file));
@@ -137,14 +180,16 @@ export function createManifest(directory, tag, repository, publicKey, notes, ver
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const [command, ...args] = process.argv.slice(2);
-    if (command === "config" && args.length === 1) {
-      writeFileSync(args[0], JSON.stringify(updaterConfig(process.env), null, 2) + "\n");
+    if (command === "config" && (args.length === 1 || args.length === 2)) {
+      writeFileSync(args[0], JSON.stringify(updaterConfig(process.env, args[1] ?? "installers"), null, 2) + "\n");
     } else if (command === "collect" && args.length === 3) {
       collectArtifacts(...args);
+    } else if (command === "checksums" && args.length === 3) {
+      createChecksums(...args);
     } else if (command === "manifest" && args.length === 4) {
       const [directory, tag, repository, notesFile] = args;
       const manifest = createManifest(directory, tag, repository, process.env.TAURI_UPDATER_PUBLIC_KEY, readFileSync(notesFile, "utf8"));
       writeFileSync(join(directory, "latest.json"), JSON.stringify(manifest, null, 2) + "\n");
-    } else throw Error("用法：updater-artifacts.mjs config <输出配置> | collect <下载目录> <空输出目录> <tag> | manifest <产物目录> <tag> <owner/repo> <发布说明>");
+    } else throw Error("用法：updater-artifacts.mjs config <输出配置> [installers|signed] | checksums <产物目录> <tag> <installers|signed> | collect <下载目录> <空输出目录> <tag> | manifest <产物目录> <tag> <owner/repo> <发布说明>");
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

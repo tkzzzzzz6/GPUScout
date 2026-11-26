@@ -16,6 +16,10 @@ on:
         description: "只打包、核对，不发布（试新的发版流程用，安装包在这次运行的 Artifacts 里）"
         type: boolean
         default: false
+      signed_updates:
+        description: "额外生成应用内更新包（需正确的签名密钥、密码及公钥）；默认仅普通安装包"
+        type: boolean
+        default: false
       build_ref:
         description: "仅 dry-run：已审阅的分支或提交 SHA；留空时使用 tag"
         required: false
@@ -30,6 +34,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  RELEASE_MODE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.signed_updates) || (github.event_name == 'push' && vars.GPUSCOUT_SIGNED_UPDATES == 'true')) && 'signed' || 'installers' }}
   TAG: ${{ inputs.tag || github.ref_name }}
   BUILD_REF: ${{ inputs.dry_run && inputs.build_ref || inputs.tag || github.ref_name }}
 
@@ -49,12 +54,12 @@ jobs:
           node-version: 22
       - name: tag 和三处版本号一致
         run: node scripts/version.mjs check "$TAG"
-      - name: 检查更新签名配置
+      - name: 检查发布模式配置
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
-        run: node scripts/updater-artifacts.mjs config "$RUNNER_TEMP/updater-config.json"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ env.RELEASE_MODE == 'signed' && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
+        run: node scripts/updater-artifacts.mjs config "$RUNNER_TEMP/updater-config.json" "$RELEASE_MODE"
       - name: 这个版本还没发布过
         if: ${{ !inputs.dry_run }}
         env:
@@ -101,10 +106,6 @@ jobs:
             args: "--verbose"
             targets: ""
     runs-on: ${{ matrix.os }}
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -139,13 +140,23 @@ jobs:
           curl -fsSL --retry 10 --retry-all-errors --retry-delay 5 -o "$f" \
             https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
           echo "LDAI_RUNTIME_FILE=$f" >> "$GITHUB_ENV"
-      - name: 写入更新公钥和签名产物配置
+      - name: 写入打包配置
         shell: bash
-        run: node scripts/updater-artifacts.mjs config "$RUNNER_TEMP/updater-config.json"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_UPDATER_PUBLIC_KEY: ${{ env.RELEASE_MODE == 'signed' && vars.TAURI_UPDATER_PUBLIC_KEY || '' }}
+        run: node scripts/updater-artifacts.mjs config "$RUNNER_TEMP/updater-config.json" "$RELEASE_MODE"
       - name: 打包
         shell: bash
-        run: npm run tauri build -- --config "$RUNNER_TEMP/updater-config.json" ${{ matrix.args }}
+        run: |
+          if [ "$RELEASE_MODE" = "installers" ]; then
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PATH TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_UPDATER_PUBLIC_KEY
+          fi
+          npm run tauri build -- --config "$RUNNER_TEMP/updater-config.json" ${{ matrix.args }}
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.RELEASE_MODE == 'signed' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           # 没有 FUSE 时让 linuxdeploy 解压后运行（只对 Linux 有用）
           APPIMAGE_EXTRACT_AND_RUN: "1"
       - name: 存下安装包
@@ -172,8 +183,6 @@ jobs:
     name: 发布 Release
     needs: [prepare, build]
     runs-on: ubuntu-latest
-    env:
-      TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -182,6 +191,7 @@ jobs:
         with:
           node-version: 22
       - name: 安装更新签名校验工具
+        if: ${{ env.RELEASE_MODE == 'signed' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake libsodium-dev
@@ -196,7 +206,7 @@ jobs:
         run: |
           mkdir out
           node scripts/updater-artifacts.mjs collect dist out "$TAG"
-      - name: 生成与更新清单一致的发布说明
+      - name: 生成发布说明
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -205,16 +215,35 @@ jobs:
 
           Windows 推荐使用 NSIS 安装程序（`*_x64-setup.exe`）；批量部署仍可使用 MSI。
           macOS 提供 Apple 芯片与 Intel 的 DMG 安装包；Linux 提供 deb、rpm 和 AppImage。
-          应用内更新支持 Windows NSIS、macOS 和 Linux AppImage；deb/rpm 请使用对应安装包或包管理器。
-          首个接入自动更新的版本仍需手动安装一次，之后才能通过应用内更新。
+          下载后可用同一发布中的 `checksums.txt` 核对 SHA-256。
+          Linux：`sha256sum -c checksums.txt`（需下载清单列出的文件）。
+          Windows PowerShell：`Get-FileHash .\GPUScout_* -Algorithm SHA256`，与清单逐项比对。
+          macOS 也可用 `shasum -a 256 -c checksums.txt`。
 
-          更新包包含 Tauri 更新签名；这与 Windows 代码签名或 Apple 公证不同。
-          系统首次运行可能仍提示未签名；Linux 需要系统托盘和钥匙串支持。
+          MD
+          if [ "$RELEASE_MODE" = "signed" ]; then
+            cat >> notes.md <<'MD'
+          此版本额外提供签名更新包和 `latest.json`，支持 Windows NSIS、macOS 和 Linux AppImage 的应用内更新；deb/rpm、MSI 使用对应安装包升级。首个接入自动更新的版本仍需手动安装一次。
+
+          MD
+          else
+            cat >> notes.md <<'MD'
+          此版本发布普通安装包，使用手动下载升级，未启用应用内自动更新。
+
+          MD
+          fi
+          cat >> notes.md <<'MD'
+          Tauri 更新签名与 Windows 代码签名或 Apple 公证是不同机制；系统首次运行可能提示未签名。Linux 需要系统托盘和钥匙串支持。
 
           MD
           gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -f target_commitish="$(git rev-parse HEAD)" --jq .body >> notes.md
       - name: 校验所有更新签名并生成清单
+        if: ${{ env.RELEASE_MODE == 'signed' }}
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
         run: node scripts/updater-artifacts.mjs manifest out "$TAG" "$GITHUB_REPOSITORY" notes.md
+      - name: 验证平台完整性并生成 SHA-256 校验清单
+        run: node scripts/updater-artifacts.mjs checksums out "$TAG" "$RELEASE_MODE"
       - name: 留存已核验的发布文件（包括 dry-run）
         uses: actions/upload-artifact@v4
         with:

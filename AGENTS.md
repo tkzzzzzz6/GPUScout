@@ -183,8 +183,8 @@ design/            设计稿 SVG 和应用图标源文件
 
 ## 更新签名
 
-- 发布更新包必须使用维护者备份的签名私钥，通过 Actions Secrets 注入；公钥通过仓库 Variable `TAURI_UPDATER_PUBLIC_KEY` 写入发布配置。不要在 issue、聊天、日志或测试快照输出私钥/密码，也不要把测试密钥当正式密钥。
-- `scripts/updater-artifacts.mjs` 先检查平台产物、签名和绑定版本，再生成清单；不能绕过校验发布。dry-run 不发布，Agent 不打 tag 或发布 Release。
+- 普通安装包默认无需更新密钥，且不生成更新清单；显式选择签名更新模式时，发布更新包必须使用维护者备份的签名私钥，通过 Actions Secrets 注入；公钥通过仓库 Variable `TAURI_UPDATER_PUBLIC_KEY` 写入发布配置。不要在 issue、聊天、日志或测试快照输出私钥/密码，也不要把测试密钥当正式密钥。
+- `scripts/updater-artifacts.mjs` 在所有模式检查平台产物与版本并生成 SHA-256 `checksums.txt`；签名更新模式额外检查签名和绑定版本，再生成 `latest.json`，不能绕过更新验签。dry-run 不发布，Agent 不打 tag 或发布 Release。
 
 ## 界面约定
 
