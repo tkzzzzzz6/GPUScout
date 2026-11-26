@@ -118,6 +118,8 @@ pub fn run() {
             commands::save_server,
             commands::delete_server,
             commands::ssh_config_hosts,
+            commands::read_ssh_config,
+            commands::save_ssh_config,
             commands::import_ssh_hosts,
             commands::sync_ssh_config,
             commands::set_ssh_auto_sync,

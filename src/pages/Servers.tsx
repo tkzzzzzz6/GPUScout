@@ -3,6 +3,7 @@ import { LIVE_KEEP, usePolled, useNowSec, useServerStatus } from "../hooks";
 import { AnimatePresence, motion } from "motion/react";
 import { HOSTKEY_CHANGED, LINKS, call, openExternal, setSetting, type HostEntry, type Overview, type Probe, type ServerList, type ServerRecord, type ServerView, type Settings, type Watch } from "../api";
 import { Icon } from "../icons";
+import { SshConfigEditor } from "../SshConfigEditor";
 import { formatBytes as gb, formatDuration as dur, sshCommand as sshCmd } from "../format";
 import { ApiFormatHelp, Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
 
@@ -383,7 +384,7 @@ function OvBars({ o }: { o?: Overview }) {
 }
 
 /* ---------------- 页面 ---------------- */
-type SheetState = { kind: "detail"; id: string } | { kind: "edit"; rec: ServerRecord } | { kind: "import" } | null;
+type SheetState = { kind: "detail"; id: string } | { kind: "edit"; rec: ServerRecord } | { kind: "import" } | { kind: "config" } | null;
 
 export default function ServersPage() {
   const [list, setList] = useState<ServerList | null>(null);
@@ -451,6 +452,7 @@ export default function ServersPage() {
         <Btn primary icon="plus" onClick={() => setSheet({ kind: "edit", rec: EMPTY })}>添加服务器</Btn>
         <Btn icon="doc" onClick={() => setSheet({ kind: "import" })}>从 SSH 配置导入</Btn>
         <Btn icon="refresh" disabled={busy} onClick={sync}>同步到 SSH 配置</Btn>
+        <Btn icon="doc" onClick={() => setSheet({ kind: "config" })}>本机 SSH 配置</Btn>
         <span style={{ flex: 1 }} />
         {prefs && (
           <span className="row" style={{ gap: 8, fontSize: 13 }}>
@@ -522,7 +524,8 @@ export default function ServersPage() {
         AutoDL 的 SSH 名称与控制台实例名一致，改名后请刷新并重新同步。同步只改 SSH 配置（{list?.ssh_config_path ?? "~/.ssh/config"}）里「autodl-lookout」标记的一段，改之前会备份成 config.autodl-lookout.bak；你自己写的配置不会动。
       </p>
 
-      <Sheet open={sheet != null} onClose={() => setSheet(null)}
+      {sheet?.kind === "config" && <SshConfigEditor onClose={() => { setSheet(null); void load(); }} />}
+      <Sheet open={sheet != null && sheet.kind !== "config"} onClose={() => setSheet(null)}
         title={sheet?.kind === "edit" ? (sheet.rec.id ? "编辑服务器" : "添加服务器") : sheet?.kind === "import" ? "从 SSH 配置导入" : selected?.name ?? ""}
         left={<span />} right={<button className="link-btn bold" onClick={() => setSheet(null)}>完成</button>}>
         {sheet?.kind === "detail" && selected && list && (

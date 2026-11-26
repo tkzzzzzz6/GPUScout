@@ -49,6 +49,8 @@ export interface ServerRecord {
   key_path: string | null; alias: string | null; note: string | null;
 }
 export interface HostEntry { alias: string; host: string; port: number; user: string; identity_file: string | null }
+export interface SshConfigDocument { path: string; content: string; exists: boolean }
+export interface SshConfigSaved { document: SshConfigDocument; changed: boolean; backup_path: string | null }
 export interface Probe { ms: number; system: string; via_key: boolean }
 export const HOSTKEY_CHANGED = "HOSTKEY_CHANGED:";
 export interface Gpu { index: number; uuid: string; name: string; util: number; mem_used_mb: number; mem_total_mb: number; temp: number | null; power_w: number | null }
