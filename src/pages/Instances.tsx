@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { LINKS, call, openExternal, timeFieldTs, type Instance, type InstancePage, type RegularInstance } from "../api";
 import { Icon } from "../icons";
+import { nextDelay, hoursSince } from "../format";
 import { Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, copy, stagger, useAction, useToast } from "../ui";
 
 const STATUS: Record<string, [string, string]> = {
@@ -13,11 +14,6 @@ const statusCap = (s: string) => {
   const [label, cls] = STATUS[s] ?? [s || "未知", ""];
   return <span className={`capsule ${cls}`}>{label}</span>;
 };
-/** 下一次刷新列表的间隔：成功 30 秒；出错时翻倍，最长 10 分钟（和后台监控的退避一致） */
-export function nextDelay(prev: number, ok: boolean) {
-  return ok ? 30_000 : Math.min(Math.max(prev, 30_000) * 2, 600_000);
-}
-
 /** 定时刷新列表，按 load 的结果（成功 true / 失败 false）决定下一次间隔；返回手动刷新函数 */
 function usePolling(load: () => Promise<boolean>) {
   const loadRef = useRef(load);
@@ -40,7 +36,6 @@ function usePolling(load: () => Promise<boolean>) {
   return tick;
 }
 
-const hoursSince = (ts: number | null) => (ts ? (Date.now() / 1000 - ts) / 3600 : null);
 const open = openExternal;
 
 function Detail({ inst, onChanged }: { inst: Instance; onChanged: () => void }) {

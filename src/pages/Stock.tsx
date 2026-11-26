@@ -1,21 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { createPortal } from "react-dom";
-import { LINKS, call, fmtClock, gpuAlias, isGpu, openExternal, type BaseImage, type HistoryPoint, type Offer, type RegionStock, type RentResult, type Rule, type Settings, type Snapshot, type StockItem } from "../api";
+import { LINKS, call, fmtClock, gpuAlias, isGpu, openExternal, yuan, type BaseImage, type HistoryPoint, type Offer, type RegionStock, type RentResult, type Rule, type Settings, type Snapshot, type StockItem } from "../api";
 import { Icon } from "../icons";
+import { dateLine, formatAgo as ago, formatCuda as cudaText, matchesKeyword as matchKw } from "../format";
 import { useGpuPrice, useNowSec } from "../hooks";
 import { Btn, ConfirmButton, CountUp, FormRow, Group, Page, Row, Segmented, Select, Sheet, Stepper, Tile, softSpring, spring, useAction, useRefData, useToast } from "../ui";
 import type { PageId } from "../App";
 
 const FULL = 40; // 进度条满格 = 40 张
-
-function dateLine() {
-  const d = new Date();
-  const h = d.getHours();
-  const part = h < 6 ? "凌晨" : h < 12 ? "上午" : h < 14 ? "中午" : h < 18 ? "下午" : "晚上";
-  const wd = "日一二三四五六"[d.getDay()];
-  return `${d.getMonth() + 1}月${d.getDate()}日 星期${wd} · ${part}`;
-}
 
 /* ---------------- history chart ---------------- */
 function History({ region, gpu }: { region: string; gpu: string }) {
@@ -75,17 +68,7 @@ function History({ region, gpu }: { region: string; gpu: string }) {
 }
 
 /* ---------------- 实时价格 ---------------- */
-const yuan = (v: number | null | undefined) => (v == null ? "—" : `¥${v.toFixed(2)}`);
-
-function ago(sec: number) {
-  if (sec < 5) return "刚刚更新";
-  if (sec < 60) return `${sec} 秒前更新`;
-  return `${Math.floor(sec / 60)} 分钟前更新`;
-}
-
 /* ---------------- 租用（会扣费） ---------------- */
-const cudaText = (c: number | null) => (c == null ? "" : (c / 10).toFixed(1));
-
 function RentSheet({ open, onClose, region, regionName, gpu, offers, onRented }: {
   open: boolean; onClose: () => void; region: string; regionName: string; gpu: string; offers: Offer[]; onRented: () => void;
 }) {
@@ -348,7 +331,6 @@ function RegionGroup({ rs, rules }: { rs: RegionStock; rules: Rule[] }) {
 
 /* ---------------- 按卡型 ---------------- */
 type Loc = { rs: RegionStock; it: StockItem };
-const matchKw = (name: string, kw: string) => name.toLowerCase().includes(kw.trim().toLowerCase());
 
 /** 所有看板区域里的卡，按卡型名合并：卡型 → 各区 */
 function byModel(regions: RegionStock[]) {

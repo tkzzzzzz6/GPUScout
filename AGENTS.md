@@ -19,17 +19,18 @@
 - 保持现有代码风格：中文注释和界面文案，说明「为什么」而不是复述代码。
 - 不要改写与任务无关的文件，不要批量格式化，不要改动换行符（仓库内文本文件统一为 LF，见 `.gitattributes`）。
 - 改了用户可见的行为，同步更新 `README.md` 的功能表、用到的接口或注意事项。
-- 新功能和缺陷修复都要有测试：Rust 测试写在对应模块的 `#[cfg(test)] mod tests` 里；调用 AutoDL 的代码用 `api.rs` / `market.rs` 里的本地假 HTTP 服务器检查请求方法、路径、请求头和 body，返回值用真实接口的字段形状。前端目前靠 `tsc` 类型检查和演示模式下的手动验证。
+- 新功能和缺陷修复都要有测试：Rust 测试写在对应模块的 `#[cfg(test)] mod tests` 里；调用 AutoDL 的代码用 `api.rs` / `market.rs` 里的本地假 HTTP 服务器检查请求方法、路径、请求头和 body，返回值用真实接口的字段形状。前端纯函数使用 Vitest（`src/**/*.test.ts`，Node 环境，不引入 DOM 测试库），界面继续通过 `tsc` 和演示模式实际操作验证。
 
 ### 开 PR 之前
 
 在仓库根目录运行，全部通过才能提交 PR：
 
 ```bash
-npm test          # = npm run build（tsc + vite build）+ cargo test
+npm test          # 脚本测试 + Vitest 纯函数测试 + npm run build（tsc + vite build）+ cargo test
+npm run lint:rust # cargo clippy --all-targets -- -D warnings
 ```
 
-`cargo` 不能有新的 warning。这些检查与 CI（`.github/workflows/ci.yml`，Windows 和 Ubuntu 各跑一遍）一致。改了界面时，用离线演示模式（`npm run demo`）实际操作一遍，截图放进 PR。
+`cargo` 和 Clippy 不能有新的 warning；CI 两个平台都运行 `npm run lint:rust`，本地缺少组件时先运行 `rustup component add clippy`。这些检查与 CI（`.github/workflows/ci.yml`，Windows 和 Ubuntu 各跑一遍）一致。改了界面时，用离线演示模式（`npm run demo`）实际操作一遍，截图放进 PR。
 
 ### 提交与 PR
 
@@ -60,7 +61,9 @@ npm test          # = npm run build（tsc + vite build）+ cargo test
 
 ```bash
 npm install            # 安装前端依赖
-npm test               # 前端类型检查 + 打包（npm run build）+ Rust 单元测试（cargo test，离线，不需要凭证）
+npm test               # 脚本/Vitest 单测 + 前端检查/打包 + Rust 单测（离线，不需要凭证）
+npm run test:unit       # 只跑前端纯函数测试（不需要 Rust/桌面环境）
+npm run lint:rust       # Rust 所有目标的 Clippy 检查，不允许警告
 npm run build          # 只做前端类型检查 + 打包到 dist/（Rust 编译时要用到 dist/）
 npm run demo           # 离线演示：浏览器打开 http://localhost:1420 ，用 src/mock.ts 的假数据
 npm run tauri dev      # 桌面开发模式（需要真实凭证才有数据）

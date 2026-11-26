@@ -43,7 +43,7 @@ pub fn load(store: &Store, k: Kind) -> Option<String> {
         }
     }
     // 旧名字下存的凭证：搬到新名字下，再删掉旧的
-    if let Some(old) = keyring::Entry::new(LEGACY_SERVICE, k.user()).ok() {
+    if let Ok(old) = keyring::Entry::new(LEGACY_SERVICE, k.user()) {
         if let Some(t) = old.get_password().ok().filter(|t| !t.is_empty()) {
             if save(store, k, &t).is_ok() {
                 let _ = old.delete_credential();

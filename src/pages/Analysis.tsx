@@ -2,15 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { call, fmtTime, type Heatmap, type HeatCell, type Rule, type Settings } from "../api";
 import { Icon } from "../icons";
+import { heatCellValue as cellValue, formatHeatValue, type HeatMetric as Metric } from "../format";
 import { Group, Page, Segmented, Select, useRefData } from "../ui";
 
 const WEEK = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-type Metric = "hit" | "avg";
 type Range = "7" | "14" | "0";
-
-function cellValue(c: HeatCell, metric: Metric) {
-  return metric === "hit" ? c.hit_ratio : c.avg_idle;
-}
 
 export default function AnalysisPage() {
   const ref = useRefData();
@@ -73,7 +69,7 @@ export default function AnalysisPage() {
   }, [data, metric]);
 
   const fmt = (v: number | null | undefined) =>
-    v == null ? "—" : metric === "hit" ? `${Math.round(v * 100)}%` : `${v.toFixed(1)} 张`;
+    formatHeatValue(v, metric);
 
   const spanDays = data?.first_ts && data?.last_ts ? (data.last_ts - data.first_ts) / 86400 : 0;
   const enough = !!data && data.samples > 0 && spanDays >= 1;
