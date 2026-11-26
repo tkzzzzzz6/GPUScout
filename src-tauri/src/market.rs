@@ -38,6 +38,7 @@ pub struct MachineSlot {
     pub price_yuan: Option<f64>,
     /// 如 "13.2" → 132
     pub max_cuda: Option<i64>,
+    pub cpu_arch: String,
 }
 
 /// 普通容器实例（控制台「容器实例」页）里界面要用的字段。
@@ -87,7 +88,7 @@ impl MarketClient {
         Self { http, base: base.into().trim_end_matches('/').to_string(), token: crate::api::clean_token(&token.into()) }
     }
 
-    async fn call(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> ApiResult<Value> {
+    pub(crate) async fn call(&self, method: reqwest::Method, path: &str, body: Option<Value>) -> ApiResult<Value> {
         if self.token.is_empty() {
             return Err(ApiError::NoToken);
         }
@@ -264,6 +265,7 @@ pub struct RentReq {
     pub machine_id: String,
     pub gpu_amount: i64,
     pub image_uuid: String,
+    pub image_source: crate::images::Source,
     pub name: String,
 }
 
@@ -272,7 +274,8 @@ pub fn rent_body(r: &RentReq) -> Value {
     json!({
         "instance_info": {
             "machine_id": r.machine_id, "charge_type": "payg", "req_gpu_amount": r.gpu_amount,
-            "base_image_uuid": r.image_uuid, "private_image_uuid": "", "reproduction_uuid": "",
+            "base_image_uuid": if r.image_source == crate::images::Source::Base { r.image_uuid.as_str() } else { "" },
+            "private_image_uuid": if r.image_source == crate::images::Source::Base { "" } else { r.image_uuid.as_str() }, "reproduction_uuid": "",
             "cg_application_uuid": "",
             "cg_application_info": { "image_name": "", "current_version_id": 0, "current_version": "", "image_id": 0 },
             "instance_name": r.name, "expand_data_disk": 0, "reproduction_id": 0
@@ -438,6 +441,7 @@ pub fn parse_machines(d: &Value) -> ApiResult<(Vec<MachineSlot>, i64)> {
             idle: m.get("gpu_idle_num").and_then(|v| v.as_i64()).unwrap_or(0),
             price_yuan: m.get("payg_price").and_then(|v| v.as_f64()).map(|p| p / 1000.0),
             max_cuda: m.get("highest_cuda_version").and_then(|v| v.as_str()).and_then(parse_cuda),
+            cpu_arch: str_of(m, "cpu_arch"),
         })
         .collect();
     Ok((slots, max_page))
@@ -641,7 +645,7 @@ mod tests {
 
     #[test]
     fn rent_body_matches_console() {
-        let b = rent_body(&RentReq { machine_id: "m-1".into(), gpu_amount: 2, image_uuid: "base-image-new".into(), name: "lookout".into() });
+        let b = rent_body(&RentReq { machine_id: "m-1".into(), gpu_amount: 2, image_uuid: "base-image-new".into(), image_source: crate::images::Source::Base, name: "lookout".into() });
         assert_eq!(b["instance_info"]["machine_id"], "m-1");
         assert_eq!(b["instance_info"]["charge_type"], "payg");
         assert_eq!(b["instance_info"]["req_gpu_amount"], 2);
@@ -666,7 +670,7 @@ mod tests {
     async fn rent_request_shape() {
         let (base, h) = serve_once(r#"{"code":"Success","data":"inst-uuid-1","msg":""}"#).await;
         let c = MarketClient::with_base("web.jwt.token", base);
-        let id = c.rent_payg(&RentReq { machine_id: "m-1".into(), gpu_amount: 1, image_uuid: "base-image-new".into(), name: "".into() }).await.unwrap();
+        let id = c.rent_payg(&RentReq { machine_id: "m-1".into(), gpu_amount: 1, image_uuid: "base-image-new".into(), image_source: crate::images::Source::Base, name: "".into() }).await.unwrap();
         assert_eq!(id, "inst-uuid-1");
         let req = h.await.unwrap();
         assert!(req.starts_with("POST /api/v1/order/instance/create/payg "));
@@ -675,7 +679,7 @@ mod tests {
 
         let (base, _h) = serve_once(r#"{"code":"MachineGpuNumUpdateFailed","data":null,"msg":"gpu not enough"}"#).await;
         let e = MarketClient::with_base("web.jwt.token", base)
-            .rent_payg(&RentReq { machine_id: "m-1".into(), gpu_amount: 8, image_uuid: "x".into(), name: "".into() }).await.unwrap_err();
+            .rent_payg(&RentReq { machine_id: "m-1".into(), gpu_amount: 8, image_uuid: "x".into(), image_source: crate::images::Source::Base, name: "".into() }).await.unwrap_err();
         assert!(e.contains("换一台"), "{e}");
     }
 

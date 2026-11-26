@@ -85,6 +85,7 @@ src-tauri/src/
   commands.rs   暴露给前端的 Tauri 命令和手动操作入口
   api.rs        AutoDL 官方开放 API（开发者 Token）：余额、容器实例 Pro、镜像
   market.rs     算力市场库存、余额、普通容器实例（网页登录凭证，控制台内部接口）
+  images.rs     普通镜像来源、保存与下单校验，账号隔离的查询缓存与限流
   monitor.rs    后台轮询、规则判断、通知、自动动作、提醒、缓存和监控轮次互斥
   price.rs      实时价格：分档汇总、缓存、合并请求与全局限流
   regions.rs    区域、Pro 规格、公共镜像对照表
@@ -120,6 +121,8 @@ src/
   SshConfigEditor.tsx / ServerRestartControls.tsx  本机 SSH 文本编辑与自有服务器重启
   api.test.ts / format.test.ts         Node 环境的 Vitest 纯函数测试
   vite-env.d.ts                        Vite 环境类型
+  ImagePicker.tsx / ImageLibrary.tsx   分来源镜像浏览、筛选与选择
+  RentSheet.tsx / SaveRegularImage.tsx 普通实例租用确认与镜像保存
   pages/
     Stock.tsx      库存、关注卡型、实时价格与普通实例租用
     Rules.tsx      提醒规则与自动动作设置

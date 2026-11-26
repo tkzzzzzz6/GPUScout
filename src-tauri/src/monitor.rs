@@ -182,6 +182,7 @@ pub struct Monitor {
     watch_list_backoff: Mutex<(i64, i64)>,
     /// 公共基础镜像列表，1 小时内复用
     images_cache: tokio::sync::Mutex<Option<(i64, Vec<crate::market::BaseImage>)>>,
+    pub image_catalog_cache: crate::images::CatalogCache,
     /// 服务器详情的实时刷新：id → 停止信号。同一台只保留一个，界面关掉 / 隐藏时发停止
     pub live: Mutex<HashMap<String, tokio::sync::watch::Sender<bool>>>,
     /// 列表概览单台出错时的退避：id → (下次可以采集的时间, 当前退避秒数)
@@ -235,6 +236,7 @@ impl Monitor {
             pw_cache: Mutex::new(HashMap::new()),
             watch_list_backoff: Mutex::new((0, 0)),
             images_cache: tokio::sync::Mutex::new(None),
+            image_catalog_cache: Default::default(),
             live: Mutex::new(HashMap::new()),
             overview_backoff: Mutex::new(HashMap::new()),
             format_errors: Mutex::new(BTreeSet::new()),
@@ -256,7 +258,11 @@ impl Monitor {
     }
 
     pub fn set_web_token(&self, token: Option<String>) {
-        *self.web_token.write().unwrap() = token;
+        {
+            let mut current = self.web_token.write().unwrap();
+            *current = token;
+            self.image_catalog_cache.invalidate();
+        }
         *self.regions_cache.write().unwrap() = (0, vec![]);
         self.trigger();
     }
@@ -369,6 +375,14 @@ impl Monitor {
         let v = m.base_images().await.map_err(|e| format!("读取镜像列表失败：{e}"))?;
         *c = Some((now(), v.clone()));
         Ok(v)
+    }
+
+    pub async fn rental_images(&self, private: bool, force: bool) -> Result<Vec<crate::images::Image>, String> {
+        let (client, epoch) = {
+            let token = self.web_token.read().unwrap();
+            (MarketClient::new(token.clone().ok_or("还没有填写网页登录凭证")?), self.image_catalog_cache.epoch())
+        };
+        self.image_catalog_cache.get(private, epoch, force, || client.image_catalog(private)).await
     }
 
     /// AutoDL 实例的 root 密码：10 分钟内用内存里的，不写数据库、不写日志

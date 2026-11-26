@@ -1,7 +1,14 @@
 // 浏览器预览用的假数据（`npm run dev` 直接在浏览器里打开时生效；在 Tauri 里不会用到）
-import type { LiveEvent, RegularInstance, Rule, ServerRecord, Watch, Settings, Snapshot, Template } from "./api";
+import type { BaseImage, RentalImage, LiveEvent, RegularInstance, Rule, ServerRecord, Watch, Settings, Snapshot, Template } from "./api";
 
 const now = () => Math.floor(Date.now() / 1000);
+let privateImages: RentalImage[] = [
+  {uuid:"private-qwen",source:"mine",name:"Qwen 训练环境 v3",status:"finished",framework:"",cuda:124,owner:null,created_at:"2026-11-20T10:00:00+08:00",origin:"instance"},
+  {uuid:"shared-qwen",source:"shared",name:"Qwen 训练环境 v3",status:"finished",framework:"",cuda:null,owner:"示例同学",created_at:"2026-11-21T10:00:00+08:00",origin:"instance"},
+  {uuid:"private-saving",source:"mine",name:"正在保存的实验环境",status:"saving",framework:"",cuda:null,owner:null,created_at:null,origin:"instance"},
+  {uuid:"private-failed",source:"mine",name:"保存失败的环境",status:"failed",framework:"",cuda:null,owner:null,created_at:null,origin:"instance"},
+];
+let mockRentPrice: number | null = null;
 let sshConfig: string | null = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demoSshConfigMissing")
   ? null : "# 本机 SSH 配置示例\nHost lab\n    HostName 10.0.0.8\n    User tk\n";
 
@@ -388,10 +395,26 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       { uuid: "base-image-pt200", label: "PyTorch 2.0.0 · Python 3.8(ubuntu20.04) · CUDA 11.8", framework: "PyTorch", cuda: 118, rank: 10 },
       { uuid: "base-image-conda", label: "Miniconda conda3 · Python 3.10(ubuntu22.04) · CUDA 11.8", framework: "Miniconda", cuda: 118, rank: 5 },
     ],
+    rental_images: async () => {
+      if (new URLSearchParams(window.location.search).has("demoImageError")) throw "读取镜像失败，请刷新重试";
+      if(a.private) return privateImages;
+      return (await mockInvoke<BaseImage[]>("base_images")).map((i)=>({uuid:i.uuid,source:"base",name:i.label,status:"finished",framework:i.framework,cuda:i.cuda,owner:null,created_at:null,origin:"base"}));
+    },
+    save_regular_image: () => {
+      const source=regular.find((i)=>i.uuid===a.uuid);
+      if(!source || source.status!=="shutdown") throw "请先手动关机，再保存镜像";
+      if(typeof a.name!=="string" || !a.name.trim() || [...a.name].length>32) throw "镜像名称需为 1–32 个字符";
+      const image:RentalImage={uuid:`saved-${now()}`,source:"mine",name:a.name,status:"saving",framework:"",cuda:null,owner:null,created_at:new Date().toISOString(),origin:"instance"};
+      privateImages=[image,...privateImages];
+      setTimeout(()=>{image.status="finished";},2000);
+    },
     // 演示：第一次租 m-1 时模拟价格刚涨了
-    rent_instance: () => (a.machineId === "m-1" && !a.acceptPrice
-      ? { status: "price_changed", old_yuan: a.expectedPrice, new_yuan: Math.round((Number(a.expectedPrice) + 0.2) * 100) / 100 }
-      : { status: "created", instance_uuid: "demo-instance-uuid" }),
+    rent_instance: () => {
+      if(a.machineId==="m-1" && mockRentPrice===null) mockRentPrice=Math.round((Number(a.expectedPrice)+0.2)*100)/100;
+      return a.machineId==="m-1" && Number(a.expectedPrice)<Number(mockRentPrice)
+        ? {status:"price_changed",old_yuan:a.expectedPrice,new_yuan:mockRentPrice}
+        : {status:"created",instance_uuid:"demo-instance-uuid"};
+    },
     stock_history: () => Array.from({ length: 96 }, (_, i) => ({
       ts: now() - (96 - i) * 900,
       idle: Math.max(0, Math.round(6 + 6 * Math.sin(i / 9) + (i % 7) - 3)), total: 1240,

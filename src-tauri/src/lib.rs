@@ -1,6 +1,7 @@
 pub mod api;
 mod commands;
 pub mod heatmap;
+pub mod images;
 pub mod market;
 pub mod monitor;
 mod notify;
@@ -114,6 +115,8 @@ pub fn run() {
             commands::create_from_template,
             commands::gpu_prices,
             commands::base_images,
+            commands::rental_images,
+            commands::save_regular_image,
             commands::rent_instance,
             commands::list_servers,
             commands::save_server,
