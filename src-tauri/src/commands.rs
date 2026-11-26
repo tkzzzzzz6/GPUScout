@@ -556,9 +556,10 @@ pub async fn release_instance(st: State<'_, AppState>, uuid: String) -> R<()> {
 
 #[tauri::command]
 pub async fn save_image(st: State<'_, AppState>, uuid: String, name: String) -> R<Value> {
-    let v = client(&st)?.save_image(&uuid, &name).await.map_err(s)?;
-    let _ = st.store.log(now(), "info", "manual", None, &format!("保存镜像 {name}（实例 {uuid}）"));
-    Ok(v)
+    let result = crate::images::save_pro(&st.store,&client(&st)?,&uuid,name.trim(),st.store.settings().auto_min_balance_yuan,now()).await;
+    let outcome=if result.is_ok(){"保存请求已提交，请到控制台核对进度"}else{"保存被拦下、失败或结果未知，请核对提示与控制台，未自动重试"};
+    let _ = st.store.log(now(), if result.is_ok(){"info"}else{"warn"}, "manual", None, &format!("Pro 镜像 {uuid}：{outcome}"));
+    result
 }
 
 #[tauri::command]

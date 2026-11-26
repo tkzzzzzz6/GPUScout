@@ -59,6 +59,7 @@ function Detail({ inst, onChanged }: { inst: Instance; onChanged: () => void }) 
   };
   const cp = async (label: string, v: string) => { await copy(v); toast(`已复制${label}`); };
   const running = inst.status === "running";
+  const stopped = ["shutdown","shutdown_by_starting_error","shutdown_by_running_error"].includes(inst.status);
   const u = snap?.usage_info ?? {};
 
   return (
@@ -102,14 +103,17 @@ function Detail({ inst, onChanged }: { inst: Instance; onChanged: () => void }) 
         </>
       )}
 
-      <div className="group-label">保存镜像</div>
+      <div className="group-label">Pro 复用与磁盘说明</div>
+      <Group><Row icon="box" label="Pro 只有系统盘，没有独立数据盘" sub="/root/autodl-tmp 在 Pro 中是系统盘目录，不能套用普通实例的数据盘复制规则。"/><Row icon="pin" label="Pro 跨地区直接克隆：尚未核实" sub="当前公开控制台克隆表单沿用源地区；自动调度不代表支持跨地区克隆。请在 Pro 控制台核对可用操作。" right={<Btn small icon="external" onClick={()=>open(LINKS.proConsole)}>Pro 控制台</Btn>}/></Group>
+      <div className="group-label">保存 Pro 系统盘镜像</div>
       <Group>
         <FormRow icon="image" label="镜像名称">
-          <input className="inline-input" value={imageName} placeholder="如 llm-sft-v1" onChange={(e) => setImageName(e.target.value)} />
+          <input className="inline-input" maxLength={32} aria-label="Pro 镜像名称" value={imageName} placeholder="如 llm-sft-v1" onChange={(e) => setImageName(e.target.value)} />
         </FormRow>
       </Group>
+      <p className="group-foot">请先手动关机。保存系统盘环境可能产生镜像存储费用，提交后请在 Pro 控制台查看状态；软件不会自动关停实例。</p>
       <div className="row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
-        <Btn small icon="check" disabled={busy || !imageName.trim()} onClick={() => act("save_image", "已开始保存镜像", { name: imageName.trim() })}>保存</Btn>
+        <ConfirmButton icon="image" label="保存 Pro 镜像" confirmLabel="同意系统盘镜像存储计费，再点确认" disabled={busy || !stopped || !imageName.trim()} onConfirm={() => act("save_image", "Pro 镜像保存请求已提交，请到控制台查看进度", { name: imageName.trim() })} />
       </div>
     </>
   );

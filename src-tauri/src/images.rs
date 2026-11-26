@@ -120,6 +120,13 @@ pub fn claim_save(store: &crate::store::Store, uuid: &str, now: i64) -> Result<(
     store.kv_set(&key, &now.to_string())
 }
 
+/// Pro 使用独立的开发者凭证与系统盘语义，但保存同样需要确认状态和存储费用。
+pub async fn save_pro(store:&crate::store::Store,client:&crate::api::Client,uuid:&str,name:&str,min:f64,at:i64)->Result<Value,String>{
+    let status=client.status(uuid).await.map_err(|e|e.to_string())?;validate_save(&status,name)?;
+    crate::market::rent_guard(client.balance().await.map(|b|b.assets).map_err(|e|e.to_string()),min)?;
+    claim_save(store,uuid,at)?;client.save_image(uuid,name).await.map_err(|_|"镜像保存结果无法确认，请在 Pro 控制台核对，未自动重试".into())
+}
+
 type Entry = (u64, Instant, Result<Vec<Image>, String>);
 #[derive(Default)]
 pub struct CatalogCache { epoch: AtomicU64, entries: tokio::sync::Mutex<HashMap<bool, Entry>> }
@@ -262,4 +269,14 @@ pub(crate) mod tests {
             assert_eq!(b["instance_info"]["private_image_uuid"],if source==Source::Base{""}else{"image"});
         }
     }
+    #[tokio::test]async fn pro_save_checks_status_balance_and_posts_once(){
+        let store=crate::store::Store::open_in_memory().unwrap();
+        let (base,h)=server(vec![response(json!("running"))]).await;
+        assert!(save_pro(&store,&crate::api::Client::with_base("fake-dev",base),"pro-src","环境",10.0,100).await.is_err());assert_eq!(h.await.unwrap().len(),1);
+        let (base,h)=server(vec![response(json!("shutdown")),response(json!({"assets":1000}))]).await;
+        assert!(save_pro(&store,&crate::api::Client::with_base("fake-dev",base),"pro-src","环境",10.0,100).await.is_err());assert_eq!(h.await.unwrap().len(),2);
+        let (base,h)=server(vec![response(json!("shutdown")),response(json!({"assets":100000})),response(Value::Null)]).await;
+        save_pro(&store,&crate::api::Client::with_base("fake-dev",base),"pro-src","环境",10.0,100).await.unwrap();let req=h.await.unwrap();assert!(req[2].starts_with("POST /api/v1/dev/instance/pro/image/save "));assert_eq!(body(&req[2]),json!({"instance_uuid":"pro-src","image_name":"环境"}));assert!(req[2].contains("fake-dev"));assert!(claim_save(&store,"pro-src",101).is_err());
+    }
+
 }
