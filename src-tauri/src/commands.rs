@@ -149,6 +149,53 @@ pub fn save_settings(st: State<'_, AppState>, settings: Settings) -> R<()> {
 
 // ---------- rules ----------
 
+#[derive(serde::Serialize)]
+pub struct ConfigurationExport {
+    pub file_name: String,
+    pub rules: usize,
+    pub templates: usize,
+}
+
+#[tauri::command]
+pub async fn export_configuration(app: tauri::AppHandle, st: State<'_, AppState>) -> R<Option<ConfigurationExport>> {
+    use tauri_plugin_dialog::DialogExt;
+    let text = st.store.configuration_json()?;
+    let preview = crate::transfer::parse(&text)?.preview();
+    let (send, receive) = tokio::sync::oneshot::channel();
+    app.dialog().file().add_filter("JSON 配置", &["json"]).set_file_name("autodl-lookout-rules-templates.json")
+        .save_file(move |path| { let _ = send.send(path); });
+    let Some(file) = receive.await.map_err(|_| "保存对话框已关闭，请重试")? else { return Ok(None); };
+    let path = file.into_path().map_err(|_| "只能保存到本机文件，请选择本机目录")?;
+    let file_name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    tokio::task::spawn_blocking(move || std::fs::write(path, text).map_err(|_| "保存配置失败，请检查文件权限和剩余空间"))
+        .await.map_err(|_| "保存配置任务中断，请重试")??;
+    Ok(Some(ConfigurationExport { file_name, rules: preview.rules, templates: preview.templates }))
+}
+
+#[tauri::command]
+pub async fn pick_configuration_file(app: tauri::AppHandle) -> R<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let (send, receive) = tokio::sync::oneshot::channel();
+    app.dialog().file().add_filter("JSON 配置", &["json"]).pick_file(move |path| { let _ = send.send(path); });
+    let Some(file) = receive.await.map_err(|_| "打开对话框已关闭，请重试")? else { return Ok(None); };
+    let path = file.into_path().map_err(|_| "只能读取本机文件，请选择本机 JSON 文件")?;
+    let text = tokio::task::spawn_blocking(move || crate::transfer::read_file(&path)).await.map_err(|_| "读取配置任务中断，请重试")??;
+    crate::transfer::parse(&text)?;
+    Ok(Some(text))
+}
+
+#[tauri::command]
+pub fn preview_configuration(json: String) -> R<crate::transfer::Preview> {
+    Ok(crate::transfer::parse(&json)?.preview())
+}
+
+#[tauri::command]
+pub async fn import_configuration(st: State<'_, AppState>, json: String, mode: crate::transfer::ImportMode) -> R<crate::transfer::Imported> {
+    let result = st.monitor.import_configuration(&json, mode).await?;
+    let _ = st.store.log(now(), "info", "config", None, &format!("导入 {} 条规则、{} 个模板，导入规则已全部改为只提醒", result.rules, result.templates));
+    Ok(result)
+}
+
 #[tauri::command]
 pub fn list_rules(st: State<'_, AppState>) -> R<Vec<Rule>> {
     st.store.rules()

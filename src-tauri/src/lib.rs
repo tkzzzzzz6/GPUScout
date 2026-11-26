@@ -13,6 +13,7 @@ pub mod sshconfig;
 pub mod terminal;
 mod secret;
 pub mod store;
+pub mod transfer;
 mod tray;
 mod updates;
 
@@ -41,6 +42,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
@@ -79,6 +81,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::export_configuration,
+            commands::pick_configuration_file,
+            commands::preview_configuration,
+            commands::import_configuration,
             updates::updater_info,
             updates::set_update_auto_check,
             updates::prepare_update_install,

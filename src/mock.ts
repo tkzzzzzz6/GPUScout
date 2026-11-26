@@ -168,12 +168,60 @@ function sshNamingIssue(): string | null {
   return null;
 }
 
+function readConfiguration(text: string): { rules: Rule[]; templates: Template[] } {
+  if (new TextEncoder().encode(text).length > 2 * 1024 * 1024) throw "配置文件超过 2 MiB";
+  let data: any;
+  try { data = JSON.parse(text); } catch { throw "配置文件不是有效的 JSON，请选择显卡管家导出的文件"; }
+  if (data?.format !== "autodl-lookout.rules-and-templates") throw "这不是显卡管家的规则和模板配置文件";
+  if (data.version !== 1) throw "不支持这个配置文件的格式版本，请更新软件或重新导出";
+  if (!Array.isArray(data.rules) || !Array.isArray(data.templates) || data.rules.length > 1000 || data.templates.length > 500) throw "规则或模板列表不合法";
+  const ruleFields = ["id", "name", "enabled", "region_sign", "gpu_keyword", "min_idle", "cuda_v_from", "max_price_yuan", "cooldown_minutes", "action", "template_id", "instance_uuid", "daily_limit", "min_per_machine"];
+  const templateFields = ["id", "name", "gpu_spec_uuid", "gpu_amount", "data_center_list", "image_uuid", "cuda_v_from", "expand_disk_gb", "instance_name", "start_command"];
+  if (Object.keys(data).some((key) => !["format", "version", "rules", "templates"].includes(key))
+    || data.rules.some((rule: any) => !rule || Object.keys(rule).some((key) => !ruleFields.includes(key)))
+    || data.templates.some((template: any) => !template || Object.keys(template).some((key) => !templateFields.includes(key)))) throw "配置文件含不支持的字段，不会导入凭据或服务器";
+  const templateIds = new Set<number>();
+  for (const template of data.templates) {
+    if (!Number.isSafeInteger(template.id) || template.id <= 0 || templateIds.has(template.id) || !template.name || !template.gpu_spec_uuid || !template.image_uuid
+      || !Number.isInteger(template.gpu_amount) || template.gpu_amount < 1 || template.gpu_amount > 4 || !Array.isArray(template.data_center_list)) throw "模板内容不合法";
+    templateIds.add(template.id);
+  }
+  const ruleIds = new Set<number>();
+  for (const rule of data.rules) {
+    if (!Number.isSafeInteger(rule.id) || rule.id <= 0 || ruleIds.has(rule.id) || !rule.name || !rule.region_sign || typeof rule.enabled !== "boolean"
+      || !Number.isInteger(rule.min_idle) || rule.min_idle < 1 || !Number.isInteger(rule.cooldown_minutes) || rule.cooldown_minutes < 1
+      || !["notify", "create", "power_on"].includes(rule.action)) throw "规则内容不合法";
+    if (rule.template_id != null && !templateIds.has(rule.template_id)) throw "规则引用了文件中不存在的模板";
+    ruleIds.add(rule.id);
+  }
+  return data;
+}
+
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   await new Promise((r) => setTimeout(r, 120));
   const a = (args ?? {}) as any;
   const out: Record<string, () => unknown> = {
+    export_configuration: () => ({ file_name: "autodl-lookout-rules-templates.json", rules: rules.length, templates: templates.length,
+      content: JSON.stringify({ format: "autodl-lookout.rules-and-templates", version: 1,
+        rules: rules.map(({ last_fired_at: _lastFiredAt, ...rule }) => rule), templates }, null, 2) }),
+    preview_configuration: () => { const data = readConfiguration(a.json); return { rules: data.rules.length, templates: data.templates.length,
+      automatic_rules: data.rules.filter((rule) => rule.action !== "notify").length }; },
+    import_configuration: () => {
+      const data = readConfiguration(a.json);
+      if (!["append", "replace"].includes(a.mode)) throw "请选择追加或替换";
+      let nextTemplate = Math.max(0, ...templates.map((t) => t.id)), nextRule = Math.max(0, ...rules.map((r) => r.id));
+      const ids = new Map<number, number>();
+      const importedTemplates = data.templates.map((template) => { const id = ++nextTemplate; ids.set(template.id, id); return { ...template, id }; });
+      const importedRules = data.rules.map((rule) => ({ ...rule, id: ++nextRule, action: "notify" as const, last_fired_at: null,
+        template_id: rule.template_id != null ? ids.get(rule.template_id)! : null }));
+      templates = [...(a.mode === "replace" ? [] : templates), ...importedTemplates];
+      rules = [...(a.mode === "replace" ? [] : rules), ...importedRules];
+      return { rules: importedRules.length, templates: importedTemplates.length };
+    },
     get_snapshot: () => {
       const sn = snapshot();
+      const states = sn.rules;
+      sn.rules = rules.filter((rule) => rule.enabled).map((rule, index) => ({ ...states[index % states.length], rule_id: rule.id, market_url: ruleUrl(rule.id) }));
       tick++;
       // 浏览器预览里每次刷新让数字变一点，方便看动效
       const find = (r: string, g: string) => sn.regions.find((x) => x.region === r)?.items.find((i) => i.gpu_name === g);
