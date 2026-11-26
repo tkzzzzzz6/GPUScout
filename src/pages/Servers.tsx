@@ -5,6 +5,7 @@ import { HOSTKEY_CHANGED, LINKS, call, openExternal, setSetting, type HostEntry,
 import { Icon } from "../icons";
 import { SshConfigEditor } from "../SshConfigEditor";
 import { ServerPowerControls } from "../ServerPowerControls";
+import { ServerRestartControls } from "../ServerRestartControls";
 import { formatBytes as gb, formatDuration as dur, sshCommand as sshCmd } from "../format";
 import { ApiFormatHelp, Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, Stepper, Switch, copy, softSpring, stagger, useAction, useToast } from "../ui";
 
@@ -186,11 +187,12 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
   const [probe, setProbe] = useState<Probe | null>(null);
   const [hostkey, setHostkey] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const noSsh = !v.host && !v.alias_ready;
 
   const test = async () => {
     setTesting(true); setProbe(null); setHostkey(null);
-    try { setProbe(await call<Probe>("test_server", { id: v.id })); }
+    try { setProbe(await call<Probe>("test_server", { id: v.id })); setRestarting(false); }
     catch (e) {
       const s = errText(e);
       if (s.startsWith(HOSTKEY_CHANGED)) setHostkey(s.slice(s.indexOf("|") + 1));
@@ -229,6 +231,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
       </div>
       {noSsh && <div className="group-foot" style={{ textAlign: "center" }}>这台实例还没有 SSH 信息，开机后再来。</div>}
       <ServerPowerControls key={v.id} server={v} onChanged={onChanged} />
+      {v.kind === "custom" && <ServerRestartControls id={v.id} paused={restarting} onPaused={() => { setProbe(null); setRestarting(true); }} />}
 
       <AnimatePresence>
         {probe && (
@@ -251,7 +254,7 @@ function Detail({ v, list, onChanged, onEdit, live, setLive }: { v: ServerView; 
         )}
       </AnimatePresence>
 
-      {!noSsh && (v.kind !== "autodl" || v.status === "running") && <StatusPanel v={v} live={live} setLive={setLive} />}
+      {!noSsh && !restarting && (v.kind !== "autodl" || v.status === "running") && <StatusPanel v={v} live={live} setLive={setLive} />}
       {!noSsh && <WatchEditor v={v} />}
 
       <div className="group-label">连接</div>
@@ -528,7 +531,7 @@ export default function ServersPage() {
         title={sheet?.kind === "edit" ? (sheet.rec.id ? "编辑服务器" : "添加服务器") : sheet?.kind === "import" ? "从 SSH 配置导入" : selected?.name ?? ""}
         left={<span />} right={<button className="link-btn bold" onClick={() => setSheet(null)}>完成</button>}>
         {sheet?.kind === "detail" && selected && list && (
-          <Detail v={selected} list={list} onChanged={() => { load(); }} onEdit={() => setSheet({ kind: "edit", rec: editRecord(selected) })}
+          <Detail key={selected.id} v={selected} list={list} onChanged={() => { load(); }} onEdit={() => setSheet({ kind: "edit", rec: editRecord(selected) })}
             live={prefs?.server_live ?? true} setLive={(on) => togglePref("server_live", on)} />
         )}
         {sheet?.kind === "edit" && <Editor key={sheet.rec.id} init={sheet.rec} onSaved={() => { setSheet(null); load(); }} />}

@@ -771,6 +771,31 @@ pub async fn test_server(st: State<'_, AppState>, id: String) -> R<Probe> {
     Ok(Probe { ms: t0.elapsed().as_millis(), system, via_key: v.key_pushed || v.auth == "key" })
 }
 
+#[tauri::command]
+pub async fn restart_server(st: State<'_, AppState>, id: String) -> R<crate::reboot::ResultInfo> {
+    let numeric_id = crate::reboot::server_id(&id)?;
+    let v = find_server(&st, &id).await?;
+    if v.kind != "custom" { return Err("只支持重新启动自有服务器".into()); }
+    if let Err(error) = crate::reboot::claim_attempt(&st.store, numeric_id, now()) {
+        let _ = st.store.log(now(), "warn", "server", None, &format!("自有服务器重启 {id}：间隔保护阻止重复尝试"));
+        return Err(error);
+    }
+    stop_live_inner(&st, &id);
+    // 认证信息在执行前备齐；不使用可能在执行失败后退回密码重发的 servers::exec。
+    let password = server_password_inner(&st, &v).await?;
+    let target = servers::target(&v, password);
+    let output = st.monitor.ssh.exec_once(&target, crate::reboot::COMMAND).await;
+    st.monitor.ssh.forget(&target).await;
+    let result = crate::reboot::interpret(output);
+    let (level, outcome) = match &result {
+        Ok(r) if r.status == crate::reboot::Status::Submitted => ("info", "请求已提交"),
+        Ok(_) => ("warn", "结果无法确认，未自动重发"),
+        Err(_) => ("warn", "提交失败"),
+    };
+    let _ = st.store.log(now(), level, "server", None, &format!("自有服务器重启 {id}：{outcome}"));
+    result
+}
+
 /// 生成（或读取已有的）软件密钥，返回公钥
 #[tauri::command]
 pub fn ensure_ssh_key() -> R<String> {

@@ -41,6 +41,12 @@ pub struct ExecOut {
     pub stderr: String,
 }
 
+#[derive(Debug)]
+pub enum OnceError {
+    NotSent(String),
+    Unconfirmed,
+}
+
 /// 主机密钥检查的结果
 #[derive(Debug, PartialEq)]
 pub enum HostKeyCheck {
@@ -169,6 +175,40 @@ impl SshPool {
 
     pub async fn forget(&self, t: &Target) {
         self.conns.lock().await.remove(&t.key());
+    }
+
+    /// 重启等操作只允许提交一次；开始发送后发生任何错误都不重连或重发。
+    pub async fn exec_once(&self, t: &Target, cmd: &str) -> Result<ExecOut, OnceError> {
+        self.exec_once_timeout(t, cmd, EXEC_TIMEOUT).await
+    }
+
+    async fn exec_once_timeout(&self, t: &Target, cmd: &str, limit: Duration) -> Result<ExecOut, OnceError> {
+        let h = tokio::time::timeout(CONNECT_TIMEOUT, self.handle(t, false)).await
+            .map_err(|_| OnceError::NotSent("SSH 连接或认证超时，未发送重启请求".into()))?.map_err(OnceError::NotSent)?;
+        let ch = tokio::time::timeout(limit, h.channel_open_session()).await
+            .map_err(|_| OnceError::NotSent("SSH 会话打开超时，未发送重启请求".into()))?
+            .map_err(|_| OnceError::NotSent("SSH 会话打不开，未发送请求，请先测试连接".into()))?;
+        let run = async move {
+            ch.exec(true, cmd).await.map_err(|_| ())?;
+            let mut ch = ch;
+            let (mut out, mut so, mut se) = (ExecOut::default(), Vec::new(), Vec::new());
+            while let Some(msg) = ch.wait().await {
+                match msg {
+                    ChannelMsg::Data { ref data } => so.extend_from_slice(data),
+                    ChannelMsg::ExtendedData { ref data, .. } => se.extend_from_slice(data),
+                    ChannelMsg::ExitStatus { exit_status } => out.code = Some(exit_status),
+                    _ => {}
+                }
+                if so.len() + se.len() > 64 * 1024 { return Err(()); }
+            }
+            out.stdout = String::from_utf8_lossy(&so).into_owned();
+            out.stderr = String::from_utf8_lossy(&se).into_owned();
+            Ok(out)
+        };
+        match tokio::time::timeout(limit, run).await {
+            Ok(Ok(out)) => Ok(out),
+            _ => { self.forget(t).await; Err(OnceError::Unconfirmed) }
+        }
     }
 
     /// 执行一条命令，复用连接；通道打不开时重连一次
@@ -351,7 +391,10 @@ mod tests {
     #[derive(Clone)]
     struct TestServer {
         allowed_key: Option<keys::PublicKey>,
+        once: Option<(Arc<std::sync::atomic::AtomicUsize>, OnceReply)>,
     }
+    #[derive(Clone, Copy)]
+    enum OnceReply { Accepted, Denied, Closed, NoAck, Hang }
     impl server::Server for TestServer {
         type Handler = Self;
         fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
@@ -371,6 +414,25 @@ mod tests {
         }
         async fn exec_request(&mut self, ch: ChannelId, data: &[u8], s: &mut Session) -> Result<(), Self::Error> {
             let cmd = String::from_utf8_lossy(data).to_string();
+            if cmd == crate::reboot::COMMAND {
+                if let Some((count, reply)) = &self.once {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    match reply {
+                        OnceReply::Hang => return Ok(()),
+                        OnceReply::Closed => {},
+                        OnceReply::Accepted => {
+                            s.data(ch, CryptoVec::from(format!("{}\n", crate::reboot::ACK)))?;
+                            s.exit_status_request(ch, 0)?;
+                        }
+                        OnceReply::Denied => {
+                            s.extended_data(ch, 1, CryptoVec::from("fake-sensitive-output"))?;
+                            s.exit_status_request(ch, 21)?;
+                        }
+                        OnceReply::NoAck => { s.exit_status_request(ch, 0)?; }
+                    }
+                    s.eof(ch)?; s.close(ch)?; return Ok(());
+                }
+            }
             if cmd.starts_with("forever") {
                 // 模拟常驻的采集循环：输出两帧后一直不结束
                 s.data(ch, CryptoVec::from("a\n@@frame\nb\n@@fr"))?;
@@ -387,6 +449,10 @@ mod tests {
     }
 
     async fn start(host_key: PrivateKey, allowed_key: Option<keys::PublicKey>) -> u16 {
+        start_with_reply(host_key, allowed_key, None).await
+    }
+
+    async fn start_with_reply(host_key: PrivateKey, allowed_key: Option<keys::PublicKey>, once: Option<(Arc<std::sync::atomic::AtomicUsize>, OnceReply)>) -> u16 {
         let config = Arc::new(server::Config {
             keys: vec![host_key],
             auth_rejection_time: Duration::from_millis(10),
@@ -395,7 +461,7 @@ mod tests {
         });
         let sock = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = sock.local_addr().unwrap().port();
-        let mut srv = TestServer { allowed_key };
+        let mut srv = TestServer { allowed_key, once };
         tokio::spawn(async move {
             let _ = srv.run_on_socket(config, &sock).await;
         });
@@ -404,6 +470,45 @@ mod tests {
 
     fn rand_key() -> PrivateKey {
         PrivateKey::random(&mut rand_core::OsRng, keys::Algorithm::Ed25519).unwrap()
+    }
+
+    #[tokio::test]
+    async fn restart_is_submitted_once_and_never_replayed_after_missing_results() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for reply in [OnceReply::Accepted, OnceReply::Denied, OnceReply::Closed, OnceReply::NoAck, OnceReply::Hang] {
+            let count = Arc::new(AtomicUsize::new(0));
+            let port = start_with_reply(rand_key(), None, Some((count.clone(), reply))).await;
+            let pool = SshPool::new(Arc::new(Store::open_in_memory().unwrap()));
+            let target = Target { host: "127.0.0.1".into(), port, user: "tk".into(), password: Some("fake-pw".into()), ..Default::default() };
+            pool.exec(&target, "true").await.unwrap();
+            let output = pool.exec_once_timeout(&target, crate::reboot::COMMAND, Duration::from_secs(1)).await;
+            let result = crate::reboot::interpret(output);
+            assert_eq!(count.load(Ordering::SeqCst), 1, "关闭、缺少确认或超时都不能重发");
+            match reply {
+                OnceReply::Accepted => assert_eq!(result.unwrap().status, crate::reboot::Status::Submitted),
+                OnceReply::Denied => { assert!(!result.unwrap_err().contains("fake-sensitive-output")); },
+                _ => assert_eq!(result.unwrap().status, crate::reboot::Status::Unknown),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn restart_is_not_sent_when_authentication_or_host_key_fails() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let count = Arc::new(AtomicUsize::new(0));
+        let port = start_with_reply(rand_key(), None, Some((count.clone(), OnceReply::Accepted))).await;
+        let store = Arc::new(Store::open_in_memory().unwrap()); let pool = SshPool::new(store.clone());
+        let target = Target { host: "127.0.0.1".into(), port, user: "tk".into(), password: Some("bad-fake-pw".into()), ..Default::default() };
+        match pool.exec_once(&target, crate::reboot::COMMAND).await {
+            Err(OnceError::NotSent(e)) => assert!(!e.contains("bad-fake-pw")),
+            other => panic!("应在执行前拒绝：{other:?}"),
+        }
+        store.kv_set(&hostkey_kv("127.0.0.1", port), "SHA256:changed").unwrap();
+        match pool.exec_once(&target, crate::reboot::COMMAND).await {
+            Err(OnceError::NotSent(e)) => assert!(e.starts_with(HOSTKEY_CHANGED)),
+            other => panic!("主机密钥检查不能跳过：{other:?}"),
+        }
+        assert_eq!(count.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
