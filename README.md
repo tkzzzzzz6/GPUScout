@@ -7,8 +7,6 @@
 
 <p align="center"><img src="docs/screenshots/demo.gif" width="800" alt="操作演示：点开卡型看实时价格 → 抢卡时段 → 服务器实时状态"></p>
 
-<p align="center"><sub>以上画面都是演示模式（<code>npm run demo</code>）的假数据。</sub></p>
-
 ## 下载
 
 到 [Releases](https://github.com/tkzzzzzz6/autodl-lookout/releases) 下载安装包：
@@ -35,10 +33,19 @@ Linux 需要桌面环境有系统托盘（GNOME 要装 AppIndicator 扩展）和
 标题用的衬线字体是 Noto Serif SC 的子集（GB2312 常用字），放在 `src/assets/fonts/`，SIL OFL 授权。
 
 ```bash
-npm install
+npm ci
 npm run tauri dev      # 开发模式
 npm run tauri build    # 打包安装包（Windows 是 .msi / .exe，macOS 是 .app / .dmg，在 src-tauri/target/release/bundle/）
 ```
+
+拉取新代码后也要同步依赖：`git pull` 只更新仓库文件，不会更新本地 `node_modules`。先停止旧的开发进程，再在项目根目录运行：
+
+```bash
+npm ci
+npm run tauri dev
+```
+
+开发、演示和前端构建会先检查依赖。若提示找不到 `@tauri-apps/plugin-updater`、`@tauri-apps/plugin-process` 等包，或本地版本与锁文件不一致，先运行 `npm ci`；不必手动添加已声明的插件或删除锁文件。`russh` 的 future-incompatibility 提示是独立的 Rust 兼容性警告，不是这个 Vite 导入错误的原因。
 
 只调界面时可以 `npm run dev` 在浏览器打开 http://localhost:1420 ，会用 `src/mock.ts` 里的假数据。
 

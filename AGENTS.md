@@ -63,7 +63,7 @@ npm audit --audit-level=high # 依赖审计，阻止带高危或严重问题的�
 前端开发与测试需要 Node.js 22 LTS（22.12+）或 24 LTS，建议使用 24 LTS；版本兼容范围以 `package.json` 的 `engines` 为准。CI 同时检查 npm 依赖审计，新增测试工具时也要验证其依赖。
 
 ```bash
-npm install            # 安装前端依赖
+npm ci                 # 按锁文件安装前端依赖，拉取依赖更新后重新运行
 npm test               # 脚本/Vitest 单测 + 前端检查/打包 + Rust 单测（离线，不需要凭证）
 npm run test:unit       # 只跑前端纯函数测试（不需要 Rust/桌面环境）
 npm run lint:rust       # Rust 所有目标的 Clippy 检查，不允许警告
@@ -128,7 +128,7 @@ src/
     Logs.tsx       日志查看与筛选
     Settings.tsx   凭据、区域、监控、启动项、更新与配置导入导出设置
   assets/          应用图标与打包字体、字体许可
-scripts/           版本校验、脚本测试、更新包核验与 minisign 安装脚本
+scripts/           开发依赖检查、版本校验、脚本测试、更新包核验与 minisign 安装脚本
 design/            设计稿 SVG 和应用图标源文件
 ```
 

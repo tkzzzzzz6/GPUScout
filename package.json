@@ -19,7 +19,10 @@
     "version:check": "node scripts/version.mjs check",
     "version:set": "node scripts/version.mjs set",
     "test:unit": "vitest run",
-    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings"
+    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "predev": "node scripts/check-dependencies.mjs",
+    "predemo": "node scripts/check-dependencies.mjs",
+    "prebuild": "node scripts/check-dependencies.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",

@@ -25,7 +25,7 @@
 ```bash
 git clone https://github.com/tkzzzzzz6/autodl-lookout.git
 cd autodl-lookout
-npm install
+npm ci
 npm run demo          # 离线演示：浏览器 + 假数据，不需要 AutoDL 账号
 npm run tauri dev     # 桌面开发模式（需要在「设置」里填网页登录凭证）
 npm test              # 提交前必跑（含 Vitest 纯函数测试）
@@ -34,6 +34,8 @@ rustup component add clippy
 npm run lint:rust     # 和 CI 一样检查所有 Rust 目标
 npm audit --audit-level=high  # 检查依赖中的高危和严重级别问题
 ```
+
+每次拉取包含依赖更新的代码后，先停止旧的开发进程，在仓库根目录运行 `npm ci` 再启动。开发、演示和构建会检查依赖是否与锁文件一致，缺包时不会继续启动；该检查不会自动安装包或修改锁文件。
 
 前端纯函数测试放在 `src/**/*.test.ts`，使用 Node 环境，不引入 DOM 测试库；界面仍通过离线演示验证。CI 在 Windows 和 Ubuntu 上都执行 npm 依赖审计、`npm test` 和 Clippy，不运行会导致全仓库格式化的 `cargo fmt --check`。
 
