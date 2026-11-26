@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { collectArtifacts, createManifest, updaterConfig, validatePublicKey, verifySignature } from "../scripts/updater-artifacts.mjs";
+import { collectArtifacts, createChecksums, createManifest, updaterConfig, validatePublicKey, verifySignature } from "../scripts/updater-artifacts.mjs";
 
 const pub = Buffer.from(`untrusted comment: test public key\n${Buffer.concat([Buffer.from("Ed"), Buffer.alloc(40, 1)]).toString("base64")}\n`).toString("base64");
 const names = ["GPUScout_0.2.0_x64-setup.exe", "GPUScout_0.2.0_x64_en-US.msi", "GPUScout_0.2.0_aarch64.dmg", "GPUScout_0.2.0_x64.dmg", "GPUScout_0.2.0_amd64.deb", "GPUScout-0.2.0-1.x86_64.rpm", "GPUScout_0.2.0_amd64.AppImage", "GPUScout_0.2.0_aarch64.app.tar.gz", "GPUScout_0.2.0_x64.app.tar.gz"];
@@ -17,13 +17,77 @@ function fixture() {
 const withoutCrypto = () => {};
 
 test("签名配置缺失时明确指出变量名，不输出秘密", () => {
-  assert.throws(() => updaterConfig({}), /TAURI_SIGNING_PRIVATE_KEY/);
+  assert.throws(() => updaterConfig({ GITHUB_REPOSITORY: "owner/repo" }, "signed"), /TAURI_SIGNING_PRIVATE_KEY/);
   assert.throws(() => validatePublicKey("not-a-key"), /base64/);
-  const config = updaterConfig({ GITHUB_REPOSITORY: "tkzzzzzz6/GPUScout", TAURI_SIGNING_PRIVATE_KEY: "not-printed", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "not-printed", TAURI_UPDATER_PUBLIC_KEY: pub });
+  const config = updaterConfig({ GITHUB_REPOSITORY: "tkzzzzzz6/GPUScout", TAURI_SIGNING_PRIVATE_KEY: "not-printed", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "not-printed", TAURI_UPDATER_PUBLIC_KEY: pub }, "signed");
   assert.equal(config.bundle.createUpdaterArtifacts, true);
   assert.equal(config.plugins.updater.pubkey, pub);
   assert.deepEqual(config.plugins.updater.endpoints, ["https://github.com/tkzzzzzz6/GPUScout/releases/latest/download/latest.json"]);
   assert.ok(!JSON.stringify(config).includes("not-printed"));
+});
+
+test("普通安装包不依赖密钥，忽略遗留错误密钥并清空更新公钥", () => {
+  for (const [credentials, mode] of [[{}, undefined], [{ TAURI_SIGNING_PRIVATE_KEY: "bad-private", TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "bad-password", TAURI_UPDATER_PUBLIC_KEY: "bad-public" }, "installers"]]) {
+    const config = updaterConfig({ GITHUB_REPOSITORY: "owner/repo", ...credentials }, mode);
+    assert.equal(config.bundle.createUpdaterArtifacts, false);
+    assert.equal(config.plugins.updater.pubkey, "");
+    assert.equal(config.plugins.updater.requireSignedVersion, true);
+    assert.ok(!JSON.stringify(config).includes("bad-"));
+  }
+  assert.throws(() => updaterConfig({ GITHUB_REPOSITORY: "owner/repo" }, "other"), /发布模式/);
+});
+
+function installerFixture() {
+  const dir = mkdtempSync(join(tmpdir(), "lookout-checksums-test-"));
+  for (const name of names.slice(0, 7)) writeFileSync(join(dir, name), "abc");
+  return dir;
+}
+
+test("checksums.txt 使用标准 SHA-256 双空格格式，排除自身并检测篡改", () => {
+  const dir = installerFixture();
+  try {
+    const hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"; // SHA-256 标准向量 abc
+    const expected = names.slice(0, 7).sort().map((name) => `${hash}  ${name}\n`).join("");
+    assert.equal(createChecksums(dir, "v0.2.0", "installers"), expected);
+    assert.equal(readFileSync(join(dir, "checksums.txt"), "utf8"), expected);
+    assert.equal(createChecksums(dir, "v0.2.0", "installers"), expected, "重跑不能把旧 checksums.txt 放进自身");
+    const verified = spawnSync("sha256sum", ["--check", "checksums.txt"], { cwd: dir });
+    if (!verified.error) {
+      assert.equal(verified.status, 0);
+      writeFileSync(join(dir, names[0]), "tampered");
+      assert.equal(spawnSync("sha256sum", ["--check", "checksums.txt"], { cwd: dir }).status, 1);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("普通包缺平台、为空或混入更新产物时拒绝校验清单", () => {
+  for (const problem of ["missing", "empty", "manifest", "signature", "archive"]) {
+    const dir = installerFixture();
+    try {
+      if (problem === "missing") rmSync(join(dir, names[0]));
+      if (problem === "empty") writeFileSync(join(dir, names[0]), "");
+      if (problem === "manifest") writeFileSync(join(dir, "latest.json"), "{}");
+      if (problem === "signature") writeFileSync(join(dir, `${names[0]}.sig`), "signature");
+      if (problem === "archive") writeFileSync(join(dir, names[7]), "archive");
+      assert.throws(() => createChecksums(dir, "v0.2.0", "installers"));
+      assert.equal(existsSync(join(dir, "checksums.txt")), false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test("签名模式校验清单覆盖更新元数据与签名，缺任一关键文件就拒绝", () => {
+  const dir = fixture();
+  try {
+    assert.throws(() => createChecksums(dir, "v0.2.0", "signed"), /latest.json/);
+    const manifest = createManifest(dir, "v0.2.0", "owner/repo", pub, "", withoutCrypto);
+    writeFileSync(join(dir, "latest.json"), JSON.stringify(manifest));
+    const checksum = createChecksums(dir, "v0.2.0", "signed");
+    assert.equal(checksum.trim().split("\n").length, names.length * 2 + 1);
+    assert.match(checksum, /  latest\.json\n/);
+    assert.match(checksum, /  GPUScout_0\.2\.0_aarch64\.app\.tar\.gz\.sig\n/);
+    rmSync(join(dir, `${names[0]}.sig`));
+    assert.throws(() => createChecksums(dir, "v0.2.0", "signed"), /缺少更新文件或签名/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("清单使用四个目标平台、最终文件名和签名内容", () => {
