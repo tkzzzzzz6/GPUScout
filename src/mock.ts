@@ -8,6 +8,7 @@ let privateImages: RentalImage[] = [
   {uuid:"private-saving",source:"mine",name:"正在保存的实验环境",status:"saving",framework:"",cuda:null,owner:null,created_at:null,origin:"instance"},
   {uuid:"private-failed",source:"mine",name:"保存失败的环境",status:"failed",framework:"",cuda:null,owner:null,created_at:null,origin:"instance"},
 ];
+let migrations:Record<string,import("./api").Migration>={};
 let rentalPlans: import("./api").RentalPlan[]=[];
 let recentRental: import("./api").RentalPlan|null=null;
 let nextPlanId=1;
@@ -271,6 +272,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return r.id;
     },
     delete_rule: () => { rules = rules.filter((r) => r.id !== a.id); },
+    migration_info:()=>{const uuid=String(a.uuid);const i=regular.find(i=>i.uuid===uuid)!;const state=migrations[uuid]??={source_uuid:uuid,source_region:"beijingDC2",target_region:null,image_uuid:null,pending:false,target_uuid:null,verified:false};return {source:{uuid,name:i.name,status:i.status,region:"beijingDC2",region_name:"北京B区",gpu:i.gpu,expand_bytes:10*1024**3,cpu_arch:"x86",cuda:118},regions:[{data_center:"beijingDC2",name:"北京B区",signs:["bj-B1"]},{data_center:"westDC3",name:"西北B区",signs:["west-B"]}],state};},
+    migration_prepare:()=>{const m=migrations[String(a.uuid)];Object.assign(m,{target_region:a.region,image_uuid:a.imageUuid});return m;},
+    migration_recover:()=>{const m=migrations[String(a.uuid)];if(a.targetUuid!=="demo-instance-uuid")throw "目标实例不存在或地区不符";m.target_uuid=String(a.targetUuid);m.pending=false;return m;},
+    migration_verify:()=>{const m=migrations[String(a.uuid)];m.verified=true;return m;},
+    migration_clear_pending:()=>{migrations[String(a.uuid)].pending=false;},
     regular_clone_source:()=>{const i=regular.find(i=>i.uuid===a.uuid);if(!i||i.status!=="shutdown")throw "请先手动关机";return {uuid:i.uuid,name:i.name,region:"beijingDC2",region_name:i.region_name,gpu:i.gpu,cpu_arch:"x86",cuda:118,expand_bytes:10*1024**3};},
     clone_regular_instance:()=>{if(new URLSearchParams(location.search).has("demoCloneUnknown"))return {status:"unknown",message:"请求已发出但无法确认结果，请到 AutoDL 控制台核对订单与实例，不要重复提交"};if(Number(a.expectedPrice)<1.6)return {status:"price_changed",old_yuan:a.expectedPrice,new_yuan:1.6};return {status:"created",instance_uuid:"clone-demo-instance"};},
     list_rental_plans:()=>rentalPlans,
@@ -420,6 +426,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     },
     // 演示：第一次租 m-1 时模拟价格刚涨了
     rent_instance: () => {
+      if(a.migrationUuid){const m=migrations[String(a.migrationUuid)];if(m.pending||m.target_uuid)throw "创建已提交，请回向导恢复";m.pending=true;if(new URLSearchParams(location.search).has("demoMigrationUnknown"))throw "创建结果待核对，请回向导检查订单";m.target_uuid="demo-instance-uuid";m.pending=false;return {status:"created",instance_uuid:m.target_uuid};}
       if(a.machineId==="m-1" && mockRentPrice===null) mockRentPrice=Math.round((Number(a.expectedPrice)+0.2)*100)/100;
       return a.machineId==="m-1" && Number(a.expectedPrice)<Number(mockRentPrice)
         ? {status:"price_changed",old_yuan:a.expectedPrice,new_yuan:mockRentPrice}

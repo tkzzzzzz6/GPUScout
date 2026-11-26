@@ -4,6 +4,7 @@ pub mod heatmap;
 pub mod images;
 pub mod rental_plans;
 pub mod reuse;
+pub mod migration;
 pub mod market;
 pub mod monitor;
 mod notify;
@@ -119,7 +120,7 @@ pub fn run() {
             commands::create_from_template,
             commands::gpu_prices,
             commands::base_images,
-            commands::rental_images, commands::regular_clone_source, commands::clone_regular_instance,
+            commands::rental_images, commands::migration_info, commands::migration_prepare, commands::migration_recover, commands::migration_clear_pending, commands::migration_verify, commands::regular_clone_source, commands::clone_regular_instance,
             commands::save_regular_image,
             commands::rent_instance,
             commands::list_servers,

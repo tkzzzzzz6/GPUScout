@@ -321,7 +321,7 @@ impl MarketClient {
     /// 按量计费创建一台普通实例（会扣费；调用方先过 rent_guard 和价格复核）。成功返回实例 uuid
     pub async fn rent_payg(&self, r: &RentReq) -> Result<String, String> {
         match self.call(reqwest::Method::POST, "/api/v1/order/instance/create/payg", Some(rent_body(r))).await {
-            Ok(d) => Ok(d.as_str().map(str::to_string).unwrap_or_else(|| d.to_string())),
+            Ok(d) => d.as_str().filter(|id|!id.is_empty() && id.len()<=128 && id.bytes().all(|c|c.is_ascii_alphanumeric()||c==b'-'||c==b'_')).map(str::to_string).ok_or("创建请求已提交但平台未返回有效实例编号，请核对订单与实例，勿重复下单".into()),
             Err(ApiError::Api { code, msg }) => Err(rent_error(&code, &msg)),
             Err(e) => Err(e.to_string()),
         }

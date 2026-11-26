@@ -182,6 +182,7 @@ pub struct Monitor {
     watch_list_backoff: Mutex<(i64, i64)>,
     /// 公共基础镜像列表，1 小时内复用
     images_cache: tokio::sync::Mutex<Option<(i64, Vec<crate::market::BaseImage>)>>,
+    pub migration_cache: crate::migration::InfoCache,
     pub reuse_cache: crate::reuse::SourceCache,
     pub image_catalog_cache: crate::images::CatalogCache,
     /// 服务器详情的实时刷新：id → 停止信号。同一台只保留一个，界面关掉 / 隐藏时发停止
@@ -237,6 +238,7 @@ impl Monitor {
             pw_cache: Mutex::new(HashMap::new()),
             watch_list_backoff: Mutex::new((0, 0)),
             images_cache: tokio::sync::Mutex::new(None),
+            migration_cache: Default::default(),
             reuse_cache: Default::default(),
             image_catalog_cache: Default::default(),
             live: Mutex::new(HashMap::new()),
@@ -480,7 +482,7 @@ impl Monitor {
     }
 
     /// data_center（westDC3 …）→ 机房列表，区域表每小时刷新一次
-    async fn region_signs(&self, m: &MarketClient) -> Result<Vec<MarketRegion>, String> {
+    pub(crate) async fn region_signs(&self, m: &MarketClient) -> Result<Vec<MarketRegion>, String> {
         let (at, cached) = self.regions_cache.read().unwrap().clone();
         if !cached.is_empty() && now() - at < 3600 {
             return Ok(cached);

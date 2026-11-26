@@ -335,7 +335,7 @@ pub enum RentResult {
 #[allow(clippy::too_many_arguments)]
 pub async fn rent_instance(
     st: State<'_, AppState>, region: String, gpu: String, machine_id: String, gpu_amount: i64,
-    image_uuid: String, expected_price: f64, accept_price: bool, image_source: Option<crate::images::Source>, max_hourly: Option<f64>,
+    image_uuid: String, expected_price: f64, accept_price: bool, image_source: Option<crate::images::Source>, max_hourly: Option<f64>, migration_uuid: Option<String>,
 ) -> R<RentResult> {
     let epoch = st.monitor.image_catalog_cache.epoch();
     let m = market(&st)?;
@@ -374,17 +374,67 @@ pub async fn rent_instance(
     }
     if epoch != st.monitor.image_catalog_cache.epoch() { return Err("账号或镜像已变化，请重新选择后提交".into()); }
     let req = crate::market::RentReq { machine_id: machine_id.clone(), gpu_amount, image_uuid, image_source, name: String::new() };
+    if let Some(uuid)=&migration_uuid {
+        let info=migration_info(st.clone(),uuid.clone()).await?;
+        if info.state.source_region!=info.source.region{return Err("源地区已变化，请核对".into());}
+        if epoch!=st.monitor.image_catalog_cache.epoch(){return Err("账号已变化，请重新确认".into());}
+        crate::migration::claim(&st.store,uuid,&region,&req.image_uuid,image_source)?;
+    }
     match m.rent_payg(&req).await {
         Ok(uuid) => {
+            if let Some(source)=&migration_uuid {if crate::migration::created(&st.store,source,&uuid).is_err(){let _=st.store.log(now(),"warn","manual",None,&format!("目标 {uuid} 已创建但迁移记录写入失败，请回向导关联此实例，勿重复下单"));}}
             let _ = st.store.log(now(), "info", "manual", None, &format!("租用 {what}，¥{price:.2}/卡·时，实例 {uuid}"));
             st.monitor.invalidate_instances().await;
             Ok(RentResult::Created { instance_uuid: uuid })
         }
         Err(e) => {
             let _ = st.store.log(now(), "warn", "manual", None, &format!("租用 {what} 失败：{e}"));
-            Err(e)
+            Err(if migration_uuid.is_some(){"迁移创建请求已发出但结果无法确认，请回向导核对订单和已有目标，未自动重试".into()}else{e})
         }
     }
+}
+
+#[derive(Serialize)]
+pub struct MigrationInfo {source:crate::migration::SourceInfo, regions:Vec<crate::market::MarketRegion>, state:crate::migration::Migration}
+#[tauri::command]
+pub async fn migration_info(st:State<'_,AppState>,uuid:String)->R<MigrationInfo>{
+    let epoch=st.monitor.image_catalog_cache.epoch();let m=market(&st)?;
+    let list=st.monitor.migration_cache.get(&m,epoch,&st.monitor.image_catalog_cache).await?;
+    let inst=list.into_iter().find(|i|i.uuid==uuid).ok_or("源实例不存在，请刷新")?;
+    let regions=st.monitor.region_signs(&m).await?;let region=crate::reuse::region_of(&regions,&inst.region_sign)?;
+    let source=crate::migration::SourceInfo{uuid:uuid.clone(),name:inst.name,status:inst.status,region:region.data_center.clone(),region_name:region.name.clone(),gpu:inst.gpu};
+    if epoch!=st.monitor.image_catalog_cache.epoch(){return Err("账号已变化，请重新打开向导".into());}
+    let state=crate::migration::ensure(&st.store,&uuid,&source.region)?;
+    if state.source_region!=source.region{return Err("源地区与记录不符，请在控制台核对".into());}
+    Ok(MigrationInfo{source,regions,state})
+}
+#[tauri::command]
+pub async fn migration_prepare(st:State<'_,AppState>,uuid:String,region:String,image_uuid:String)->R<crate::migration::Migration>{
+    let epoch=st.monitor.image_catalog_cache.epoch();
+    let info=migration_info(st.clone(),uuid).await?;
+    if !info.regions.iter().any(|r|r.data_center==region){return Err("目标地区已不可用".into());}
+    let catalog=st.monitor.rental_images(true,true).await?;
+    crate::images::validate_choice(&catalog,&image_uuid,crate::images::Source::Mine,None)?;
+    if epoch!=st.monitor.image_catalog_cache.epoch(){return Err("账号已变化，请重新确认镜像".into());}
+    crate::migration::prepare_saved(&st.store,&info.state.source_uuid,&region,&image_uuid)
+}
+#[tauri::command]
+pub async fn migration_recover(st:State<'_,AppState>,uuid:String,target_uuid:String)->R<crate::migration::Migration>{
+    let epoch=st.monitor.image_catalog_cache.epoch();let m=market(&st)?;
+    let target=m.instances().await.map_err(s)?.into_iter().find(|i|i.uuid==target_uuid).ok_or("目标实例不存在，请先刷新控制台")?;
+    let regions=st.monitor.region_signs(&m).await?;let region=crate::reuse::region_of(&regions,&target.region_sign)?;
+    let state=crate::migration::read(&st.store,&uuid)?.ok_or("迁移记录不存在")?;crate::migration::verify_target(&state,&target_uuid,&region.data_center)?;
+    if epoch!=st.monitor.image_catalog_cache.epoch(){return Err("账号已变化，请重新核对".into());}
+    crate::migration::recover_saved(&st.store,&uuid,&target_uuid,&region.data_center)
+}
+#[tauri::command]
+pub fn migration_clear_pending(st:State<'_,AppState>,uuid:String,checked_no_order:bool)->R<()> {
+    crate::migration::clear_pending(&st.store,&uuid,checked_no_order)
+}
+#[tauri::command]
+pub async fn migration_verify(st:State<'_,AppState>,uuid:String)->R<crate::migration::Migration>{
+    let state=crate::migration::read(&st.store,&uuid)?.ok_or("迁移记录不存在")?;let target=state.target_uuid.ok_or("请先关联目标实例")?;
+    let mut state=migration_recover(st.clone(),uuid,target).await?;state.verified=true;crate::migration::write(&st.store,&state)?;Ok(state)
 }
 
 #[tauri::command]
