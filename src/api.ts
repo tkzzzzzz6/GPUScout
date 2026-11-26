@@ -78,6 +78,9 @@ export interface PriceInfo {
 }
 export interface Offer { machine_id: string; machine_alias: string; region_sign: string; idle: number; price_yuan: number; max_cuda: number | null }
 export interface BaseImage { uuid: string; label: string; framework: string; cuda: number | null; rank: number }
+export type ImageSource = "base" | "mine" | "shared";
+export interface ImageRef { uuid: string; source: ImageSource }
+export interface RentalImage extends ImageRef { name: string; status: string; framework: string; cuda: number | null; owner: string | null; created_at: string | null; origin: string | null }
 export type RentResult =
   | { status: "created"; instance_uuid: string }
   | { status: "price_changed"; old_yuan: number; new_yuan: number };

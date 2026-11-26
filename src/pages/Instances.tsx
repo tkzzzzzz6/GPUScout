@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { LINKS, call, openExternal, timeFieldTs, type Instance, type InstancePage, type RegularInstance } from "../api";
 import { Icon } from "../icons";
+import { SaveRegularImage } from "../SaveRegularImage";
+import { ImageLibrary } from "../ImageLibrary";
 import { nextDelay, hoursSince } from "../format";
 import { ApiFormatHelp, Btn, ConfirmButton, FormRow, Group, Page, Row, Segmented, Sheet, copy, stagger, useAction, useToast } from "../ui";
 
@@ -165,6 +167,7 @@ function RegularDetail({ inst, onChanged }: { inst: RegularInstance; onChanged: 
         <Row icon="yen" label="计费" value={inst.charge_type === "payg" ? (price ?? "按量计费") : inst.charge_type || "—"} />
         {inst.expired_at && <Row icon="calendar" label="到期" value={new Date(inst.expired_at * 1000).toLocaleString("zh-CN", { hour12: false })} />}
       </Group>
+      <SaveRegularImage key={inst.uuid} uuid={inst.uuid} status={inst.status} />
       <div className="row" style={{ marginTop: 14, justifyContent: "flex-end" }}>
         <Btn small icon="external" onClick={() => open(LINKS.console)}>在控制台打开</Btn>
       </div>
@@ -234,7 +237,7 @@ function InstanceList({ loading, onRefresh, err, loaded, empty, emptyText, child
 
 type Kind = "regular" | "pro";
 
-export default function InstancesPage({ hasToken, hasWebToken, go }: { hasToken: boolean; hasWebToken: boolean; go: (p: "settings") => void }) {
+export default function InstancesPage({ hasToken, hasWebToken, go }: { hasToken: boolean; hasWebToken: boolean; go: (p: "settings" | "stock") => void }) {
   const [kind, setKind] = useState<Kind>(hasWebToken ? "regular" : "pro");
   const shown: Kind = !hasToken ? "regular" : kind;
   return (
@@ -245,6 +248,7 @@ export default function InstancesPage({ hasToken, hasWebToken, go }: { hasToken:
           ? "你在算力市场租的容器实例，每 30 秒刷新一次。开机会开始计费：要点两次确认，余额低于「开机余额下限」或同一台当天开机满 5 次时不会开机。"
           : "容器实例 Pro（开发者 Token），每 30 秒刷新一次。"}
       </p>
+      {hasWebToken && shown === "regular" && <div className="row" style={{ marginBottom:16 }}><ImageLibrary go={()=>go("stock")} /></div>}
       {hasToken && (
         <div style={{ marginBottom: 18 }}>
           <Segmented small layoutId="inst-kind" value={kind} onChange={setKind}

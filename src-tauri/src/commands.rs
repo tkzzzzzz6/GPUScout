@@ -284,6 +284,29 @@ pub async fn base_images(st: State<'_, AppState>) -> R<Vec<crate::market::BaseIm
     st.monitor.base_images_cached().await
 }
 
+#[tauri::command]
+pub async fn rental_images(st: State<'_, AppState>, private: bool, force: Option<bool>) -> R<Vec<crate::images::Image>> {
+    st.monitor.rental_images(private, force.unwrap_or(false)).await
+}
+
+#[tauri::command]
+pub async fn save_regular_image(st: State<'_, AppState>, uuid: String, name: String) -> R<()> {
+    let epoch = st.monitor.image_catalog_cache.epoch();
+    let m = market(&st)?;
+    let source = m.instances().await.map_err(s)?.into_iter().find(|i| i.uuid == uuid).ok_or("源实例已不存在，请刷新")?;
+    let name = name.trim();
+    crate::images::validate_save(&source.status, name)?;
+    let balance = m.wallet().await.map(|b| b.assets).map_err(s);
+    crate::market::rent_guard(balance, st.store.settings().auto_min_balance_yuan)?;
+    if epoch != st.monitor.image_catalog_cache.epoch() { return Err("账号已变化，请重新确认后提交".into()); }
+    crate::images::claim_save(&st.store, &uuid, now())?;
+    let result = m.save_regular_image(&uuid, name).await;
+    st.monitor.image_catalog_cache.invalidate();
+    let outcome = if result.is_ok() { "请求已提交，请到镜像库查看进度" } else { "请求失败或结果无法确认，请刷新镜像库，未自动重试" };
+    let _ = st.store.log(now(), if result.is_ok() { "info" } else { "warn" }, "manual", None, &format!("普通实例保存镜像 {uuid}：{outcome}"));
+    result.map_err(|_| outcome.to_string())
+}
+
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum RentResult {
@@ -301,9 +324,11 @@ pub enum RentResult {
 #[allow(clippy::too_many_arguments)]
 pub async fn rent_instance(
     st: State<'_, AppState>, region: String, gpu: String, machine_id: String, gpu_amount: i64,
-    image_uuid: String, expected_price: f64, accept_price: bool,
+    image_uuid: String, expected_price: f64, accept_price: bool, image_source: Option<crate::images::Source>,
 ) -> R<RentResult> {
+    let epoch = st.monitor.image_catalog_cache.epoch();
     let m = market(&st)?;
+    let image_source = image_source.unwrap_or_default();
     let what = format!("{} {} × {}（机器 {machine_id}）", crate::regions::region_name(&region), gpu, gpu_amount);
     let skip = |msg: &str| { let _ = st.store.log(now(), "warn", "skip", None, &format!("租用 {what} 被拦下：{msg}")); };
     if !(1..=8).contains(&gpu_amount) {
@@ -327,21 +352,16 @@ pub async fn rent_instance(
         skip(&e);
         return Err(e);
     }
-    if let Ok(images) = st.monitor.base_images_cached().await {
-        if let (Some(img), Some(max)) = (images.iter().find(|i| i.uuid == image_uuid), slot.max_cuda) {
-            if img.cuda.is_some_and(|c| c > max) {
-                let e = format!("镜像要 CUDA {:.1}，这台机器最高只支持 {:.1}，换个镜像或换台机器", img.cuda.unwrap() as f64 / 10.0, max as f64 / 10.0);
-                skip(&e);
-                return Err(e);
-            }
-        }
-    }
+    let catalog = st.monitor.rental_images(image_source != crate::images::Source::Base, true).await?;
+    let selected = crate::images::validate_choice(&catalog, &image_uuid, image_source, slot.max_cuda)?;
+    if image_source != crate::images::Source::Base { m.check_private_for_machine(&selected, slot).await?; }
     let price = slot.price_yuan.ok_or("这台机器没有按量计费价格，没法租用")?;
     if crate::market::price_went_up(expected_price, price) && !accept_price {
         skip(&format!("价格从 ¥{expected_price:.2} 变成 ¥{price:.2}，等用户确认"));
         return Ok(RentResult::PriceChanged { old_yuan: expected_price, new_yuan: price });
     }
-    let req = crate::market::RentReq { machine_id: machine_id.clone(), gpu_amount, image_uuid, name: String::new() };
+    if epoch != st.monitor.image_catalog_cache.epoch() { return Err("账号或镜像已变化，请重新选择后提交".into()); }
+    let req = crate::market::RentReq { machine_id: machine_id.clone(), gpu_amount, image_uuid, image_source, name: String::new() };
     match m.rent_payg(&req).await {
         Ok(uuid) => {
             let _ = st.store.log(now(), "info", "manual", None, &format!("租用 {what}，¥{price:.2}/卡·时，实例 {uuid}"));
