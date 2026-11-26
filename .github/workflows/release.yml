@@ -160,7 +160,7 @@ jobs:
           # 没有 FUSE 时让 linuxdeploy 解压后运行（只对 Linux 有用）
           APPIMAGE_EXTRACT_AND_RUN: "1"
       - name: 存下安装包
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle-${{ matrix.key }}
           if-no-files-found: error
@@ -245,7 +245,7 @@ jobs:
       - name: 验证平台完整性并生成 SHA-256 校验清单
         run: node scripts/updater-artifacts.mjs checksums out "$TAG" "$RELEASE_MODE"
       - name: 留存已核验的发布文件（包括 dry-run）
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: verified-release-${{ env.TAG }}
           if-no-files-found: error
